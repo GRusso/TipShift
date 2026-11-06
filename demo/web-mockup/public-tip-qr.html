@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="TipShift public customer QR mockup" />
+    <title>TipShift — Public tip QR</title>
+    <link rel="stylesheet" href="./public-tip-qr.css" />
+  </head>
+  <body>
+    <div class="ribbon" data-i18n="ribbon">DEMO CUSTOMER QR · Visual only, not scannable</div>
+    <main class="page">
+      <header>
+        <a class="brand" href="./landing.html"><span>T</span>tipshift</a>
+        <div class="controls">
+          <button id="language-switch" type="button">ES</button>
+          <button id="theme-switch" type="button"><span>☾</span> <b id="theme-label">Night</b></button>
+        </div>
+      </header>
+
+      <section class="qr-layout">
+        <aside class="poster">
+          <div class="merchant-icon">N</div>
+          <p class="eyebrow" data-i18n="merchantEyebrow">CAFÉ NÓMADA</p>
+          <h1 data-i18n="posterTitle">Leave a tip for today’s team</h1>
+          <p data-i18n="posterText">Scan, choose your amount, and approve only from your own wallet.</p>
+          <div class="qr" aria-label="Non-scannable public QR demo preview"></div>
+          <small data-i18n="posterFoot">This demonstration QR does not encode an address or payment request.</small>
+        </aside>
+
+        <section class="session" id="session">
+          <div class="status-line"><span id="status-dot"></span><span id="status-label">Public tip session active</span></div>
+          <p class="eyebrow" data-i18n="sessionEyebrow">CUSTOMER ENTRY POINT</p>
+          <h2 id="session-title" data-i18n="activeTitle">One public QR. No customer account.</h2>
+          <p class="description" id="session-text" data-i18n="activeText">This QR starts a private payment session for the active lunch shift. It is separate from the private QR used by each tip recipient.</p>
+
+          <div class="privacy"><span>⊙</span><p><strong data-i18n="privacyTitle">What guests do not see:</strong><span data-i18n="privacyText"> recipient names, wallet addresses, distribution percentages, or an on-chain pool identifier.</span></p></div>
+          <a class="primary" id="pay-link" href="./tip.html" data-i18n="pay">Open customer payment demo →</a>
+          <p class="help" id="help" data-i18n="activeHelp">A real QR must be short-lived, signed by the service, and accepted only while this shift is open.</p>
+        </section>
+      </section>
+
+      <section class="state-preview">
+        <p data-i18n="preview">DEMO STATE PREVIEW</p>
+        <div class="state-buttons">
+          <button class="active" data-state="active" type="button" data-i18n="stateActive">Active shift</button>
+          <button data-state="not-started" type="button" data-i18n="stateNotStarted">Not started</button>
+          <button data-state="closed" type="button" data-i18n="stateClosed">Shift closed</button>
+          <button data-state="expired" type="button" data-i18n="stateExpired">QR expired</button>
+        </div>
+        <p class="state-note" data-i18n="stateNote">These are customer-safe responses: no pool, wallet, or participant details are exposed.</p>
+      </section>
+      <footer><a href="./shift-launch.html" data-i18n="back">← Back to shift activation</a><span data-i18n="footer">Demo only · no QR or payment session is created</span></footer>
+    </main>
+    <script src="./public-tip-qr.js"></script>
+  </body>
+</html>

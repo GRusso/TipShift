@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="TipShift local product mockup" />
+    <title>TipShift — Product demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="demo-ribbon" data-i18n="ribbon">DEMO ENVIRONMENT · No wallets or real payments</div>
+    <main class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="#top" aria-label="TipShift home"><span class="brand-mark">T</span><span>tipshift</span></a>
+        <p class="workspace" data-i18n="workspace">ORGANIZATION</p>
+        <button class="location-switch" type="button">Café Nómada <span>⌄</span></button>
+        <nav aria-label="Primary navigation">
+          <a class="nav-link active" href="#turno"><span>◈</span> <b data-i18n="navTurns">Shifts</b></a>
+          <a class="nav-link" href="#actividad"><span>◷</span> <b data-i18n="navActivity">Activity</b></a>
+          <a class="nav-link" href="#reportes"><span>▤</span> <b data-i18n="navReports">Reports</b></a>
+        </nav>
+        <div class="sidebar-footer"><div class="wallet-dot">N</div><div><strong>business.near</strong><small data-i18n="localAdmin">Local administrator</small></div></div>
+      </aside>
+
+      <section class="content" id="top">
+        <header class="topbar">
+          <div><p class="eyebrow">Café Nómada · Córdoba</p><h1 data-i18n="pageTitle">Today's shift</h1></div>
+          <div class="controls" aria-label="Display controls">
+            <button class="control-button" id="language-switch" type="button" aria-label="Cambiar a español">ES</button>
+            <button class="control-button" id="theme-switch" type="button" aria-label="Switch to night mode"><span aria-hidden="true">☾</span> <span id="theme-label">Night</span></button>
+            <button class="outline-button" id="role-switch" type="button"><span id="role-label">View: administrator</span> <span>↗</span></button>
+          </div>
+        </header>
+
+        <section class="turn-card" id="turno" aria-labelledby="turn-title">
+          <div class="turn-heading">
+            <div><div class="status-line"><span class="status-dot"></span><span id="status-text">Distribution proposed</span></div><h2 id="turn-title" data-i18n="shiftName">Lunch shift · 12:00–16:00</h2><p class="muted" data-i18n="lockedRule">Rule locked at start · version 1</p></div>
+            <div class="pool"><span data-i18n="shiftPool">SHIFT POOL</span><strong>USDC 480.00</strong><small data-i18n="participants">12 participants</small></div>
+          </div>
+          <div class="progress" aria-label="Shift progress"><span class="done" data-i18n="progressRule">Rule locked</span><span class="done" data-i18n="progressTips">Tips received</span><span class="current" id="progress-current">Review</span><span data-i18n="progressDistribution">Distribution</span></div>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="distribution-card">
+            <div class="card-heading"><div><p class="eyebrow" data-i18n="currentProposal">CURRENT PROPOSAL</p><h2 data-i18n="distributionV1">Distribution v1</h2></div><button class="text-button" type="button" data-i18n="viewRule">View rule</button></div>
+            <div class="split-bar" aria-label="Pool allocation"><span style="width: 28%"></span><span style="width: 24%"></span><span style="width: 20%"></span><span style="width: 16%"></span><span style="width: 12%"></span></div>
+            <div class="participant-list" id="participants">
+              <div class="person"><span class="avatar a1">A</span><span class="wallet">ana…mint.near <small>20.0%</small></span><strong>USDC 96.00</strong></div>
+              <div class="person"><span class="avatar a2">M</span><span class="wallet">mateo…near <small>16.0%</small></span><strong>USDC 76.80</strong></div>
+              <div class="person"><span class="avatar a3">J</span><span class="wallet">julio…near <small>12.0%</small></span><strong>USDC 57.60</strong></div>
+              <div class="person muted-person"><span class="avatar a4">+</span><span class="wallet"><span data-i18n="moreParticipants">9 more participants</span> <small>52.0%</small></span><strong>USDC 249.60</strong></div>
+            </div>
+            <p class="security-note" data-i18n="securityNote">Wallets are pseudonyms. TipShift does not store names, emails, or keys.</p>
+          </article>
+
+          <aside class="review-card" id="actividad">
+            <p class="eyebrow" data-i18n="teamReview">TEAM REVIEW</p><h2 id="review-title">No active objections</h2><p id="review-copy">The proposal is visible to all 12 participants in this shift.</p>
+            <div class="vote-meter"><div><span data-i18n="objectionDispute">Objection / dispute</span><strong id="vote-count">0 of 12</strong></div><div class="meter"><span id="vote-bar" style="width: 0%"></span></div><small data-i18n="voteThreshold">Funds are isolated if more than 50% support a dispute.</small></div>
+            <button class="primary-button" id="object-button" type="button" data-i18n="objectButton">I object to this distribution</button><button class="secondary-button" id="withdraw-button" type="button" hidden data-i18n="withdrawButton">Withdraw my objection</button>
+          </aside>
+        </section>
+
+        <section class="timeline-card" id="reportes">
+          <div class="card-heading"><div><p class="eyebrow" data-i18n="shiftTraceability">SHIFT TRACEABILITY</p><h2 data-i18n="auditTitle">Every change is recorded</h2></div><button class="text-button" type="button" data-i18n="exportReport">Export report</button></div>
+          <ol class="timeline">
+            <li><span class="timeline-dot complete">✓</span><div><strong data-i18n="timelineRule">Rule v1 locked</strong><p data-i18n="timelineRuleDetail">12 participants · 100% allocated · 12:00</p></div></li>
+            <li><span class="timeline-dot complete">✓</span><div><strong data-i18n="timelinePool">Tip pool recorded</strong><p data-i18n="timelinePoolDetail">USDC 480.00 · demo reference</p></div></li>
+            <li><span class="timeline-dot waiting" id="timeline-review">3</span><div><strong id="timeline-text">Waiting for participant review</strong><p id="timeline-detail">An objection opens a vote; it does not alter the rule.</p></div></li>
+            <li><span class="timeline-dot">4</span><div><strong data-i18n="timelineDistribution">Final distribution</strong><p data-i18n="timelineDistributionDetail">The business covers gas. Allocated amounts are never reduced.</p></div></li>
+          </ol>
+        </section>
+      </section>
+    </main>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

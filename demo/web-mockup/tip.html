@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="TipShift customer tip mockup" />
+    <title>TipShift — Leave a tip</title>
+    <link rel="stylesheet" href="./tip.css" />
+  </head>
+  <body>
+    <div class="demo-ribbon" data-i18n="ribbon">DEMO CHECKOUT · No wallet will be connected or charged</div>
+    <main class="page">
+      <header><a class="brand" href="./landing.html"><span>T</span>tipshift</a><div class="controls"><button id="language-switch" type="button">ES</button><button id="theme-switch" type="button"><span>☾</span> <b id="theme-label">Night</b></button></div></header>
+      <section class="checkout" id="checkout">
+        <aside class="merchant"><div class="merchant-icon">N</div><p class="eyebrow" data-i18n="merchantEyebrow">TIP FOR</p><h1>Café Nómada</h1><p data-i18n="merchantText">Thank the team for your service. The business defines the shift rule before collecting tips.</p><div class="merchant-status"><span></span><div><strong data-i18n="statusTitle">Exact USDC output</strong><small data-i18n="statusText">The tip pool receives the amount you choose.</small></div></div><p class="merchant-foot" data-i18n="merchantFoot">TipShift does not show employee names, wallets or tip allocation at checkout.</p></aside>
+        <section class="payment-card" id="payment-card">
+          <div class="progress"><span class="active">1</span><i></i><span>2</span><i></i><span>3</span></div>
+          <p class="eyebrow" data-i18n="stepLabel">STEP 1 OF 3</p><h2 data-i18n="title">Choose your tip</h2><p class="description" data-i18n="description">Select an amount. Before approval, you’ll see the exact USDC output and the maximum amount you can pay.</p>
+          <div class="amounts" role="group" aria-label="Tip amount"><button class="amount" data-amount="5" type="button">USDC 5</button><button class="amount active" data-amount="10" type="button">USDC 10</button><button class="amount" data-amount="20" type="button">USDC 20</button><label><span data-i18n="custom">Custom</span><input id="custom-amount" inputmode="decimal" placeholder="USDC" /></label></div>
+          <button class="primary" id="review-tip" type="button" data-i18n="review">Review tip</button>
+          <p class="notice" data-i18n="notice">You are not creating an account. Your wallet approval is required only if you choose to pay.</p>
+        </section>
+        <section class="review-card" id="review-card" hidden aria-live="polite">
+          <div class="progress"><span class="done">✓</span><i class="active-line"></i><span class="active">2</span><i></i><span>3</span></div>
+          <p class="eyebrow" data-i18n="reviewLabel">STEP 2 OF 3 · REVIEW</p><h2 data-i18n="reviewTitle">Confirm what you pay</h2><div class="summary"><div><span data-i18n="exactOutput">EXACT TIP TO THE POOL</span><strong id="exact-output">USDC 10.00</strong></div><div><span data-i18n="maximumInput">YOUR MAXIMUM INPUT</span><strong id="maximum-input">USDC 10.14</strong><small data-i18n="maximumDetail">Includes illustrative route and network cost.</small></div></div>
+          <div class="reference"><span data-i18n="reference">PAYMENT REFERENCE</span><code>ts_7zKm3Q8v</code><small data-i18n="referenceDetail">Opaque reference; it does not reveal the shift or participant list.</small></div>
+          <div class="review-notice"><span>⊙</span><p><strong data-i18n="customerCost">You control the maximum cost.</strong><span data-i18n="customerCostDetail"> The business pays final employee distribution gas; it is never taken from your tip.</span></p></div>
+          <div class="review-actions"><button class="text-button" id="back-to-amount" type="button" data-i18n="back">Change amount</button><button class="primary" id="connect-wallet" type="button" data-i18n="connect">Connect wallet to approve</button></div>
+        </section>
+        <section class="ready-card" id="ready-card" hidden aria-live="polite"><span>✓</span><p class="eyebrow" data-i18n="readyLabel">PAYMENT SESSION READY</p><h2 data-i18n="readyTitle">A wallet adapter would request your approval here.</h2><p data-i18n="readyDescription">This demo deliberately does not open a wallet, route funds or claim settlement. A real adapter must verify exact USDC delivery before the tip is credited.</p><button id="restart" type="button" data-i18n="restart">Start another demo</button></section>
+      </section>
+      <footer><span data-i18n="footer">Non-custodial tip infrastructure · Demo only</span><a href="./landing.html" data-i18n="footerBack">Learn about TipShift</a></footer>
+    </main>
+    <script src="./tip.js"></script>
+  </body>
+</html>

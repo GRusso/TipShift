@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="TipShift recipient view mockup" />
+    <title>TipShift — My tips</title>
+    <link rel="stylesheet" href="./recipient.css" />
+  </head>
+  <body>
+    <div class="demo-ribbon" data-i18n="ribbon">DEMO RECIPIENT VIEW · No wallet signature or change is submitted</div>
+    <main class="shell">
+      <aside class="rail"><a class="brand" href="./landing.html"><span>T</span>tipshift</a><p class="wallet">ana-mint.near</p><nav><a class="active" href="#current"><span>◈</span> <b data-i18n="myTips">My tips</b></a><a href="#history"><span>◷</span> <b data-i18n="history">History</b></a><a href="#destination"><span>◎</span> <b data-i18n="destination">Destination</b></a></nav><p class="rail-note" data-i18n="railNote">You can see your own destination and shifts only. Other participants’ wallets stay private.</p></aside>
+      <section class="content">
+        <header><div><p class="eyebrow">CAFÉ NÓMADA · CÓRDOBA</p><h1 data-i18n="title">My tips</h1></div><div class="controls"><button id="language-switch" type="button">ES</button><button id="theme-switch" type="button"><span>☾</span> <b id="theme-label">Night</b></button></div></header>
+        <section class="current-card" id="current"><div><p class="eyebrow" data-i18n="currentShift">CURRENT SHIFT</p><div class="status"><span></span><b data-i18n="proposed">Distribution proposed</b></div><h2 data-i18n="shiftName">Lunch shift · 12:00–16:00</h2><p class="muted" data-i18n="currentText">The collection is closed. Review the proposed distribution before final release.</p></div><div class="share"><span data-i18n="myShare">MY SHARE</span><strong>20.0%</strong><small data-i18n="ruleVersion">Rule version 1</small></div></section>
+        <section class="grid"><article class="amount-card"><p class="eyebrow" data-i18n="assigned">ASSIGNED TO YOU</p><strong>USDC 96.00</strong><p data-i18n="amountNote">The final payout amount never pays the business’s distribution gas.</p><div class="line"></div><div class="detail"><span data-i18n="pool">SHIFT POOL</span><b>USDC 480.00</b></div><div class="detail"><span data-i18n="participants">PARTICIPANTS</span><b>12</b></div></article><aside class="action-card"><p class="eyebrow" data-i18n="review">TEAM REVIEW</p><h2 data-i18n="reviewTitle">Do you object to this distribution?</h2><p data-i18n="reviewText">One objection opens a vote among the participants in this shift. It does not change the rule by itself.</p><button id="object" type="button" data-i18n="object">Object to distribution</button><button id="withdraw" type="button" hidden data-i18n="withdraw">Withdraw objection</button></aside></section>
+        <section class="destination-card" id="destination"><div><p class="eyebrow" data-i18n="destinationLabel">RECEIVING DESTINATION</p><h2 data-i18n="destinationTitle">Your permanent NEAR wallet</h2><code>ana-mint.near</code><p data-i18n="destinationText">This public wallet receives your final payout. A destination update can apply only to future, unstarted shifts.</p></div><button id="change-destination" type="button" data-i18n="changeDestination">Request destination change</button></section>
+        <section class="history-card" id="history"><p class="eyebrow" data-i18n="traceability">YOUR SHIFT TRACEABILITY</p><h2 data-i18n="historyTitle">What you can verify</h2><ol><li><span>✓</span><div><b data-i18n="historyOne">Rule locked</b><small data-i18n="historyOneText">Your share: 20.0% · version 1</small></div></li><li><span>✓</span><div><b data-i18n="historyTwo">Tip pool recorded</b><small data-i18n="historyTwoText">Shift pool: USDC 480.00</small></div></li><li><span>3</span><div><b data-i18n="historyThree">Participant review</b><small data-i18n="historyThreeText">You may object or review the distribution.</small></div></li><li><span>4</span><div><b data-i18n="historyFour">Final payout</b><small data-i18n="historyFourText">Your transaction reference appears after confirmed delivery.</small></div></li></ol></section>
+      </section>
+    </main>
+    <dialog id="destination-dialog"><button class="close" id="close-dialog" aria-label="Close">×</button><p class="eyebrow" data-i18n="dialogEyebrow">FUTURE SHIFTS ONLY</p><h2 data-i18n="dialogTitle">Changing your destination needs two wallet signatures.</h2><p data-i18n="dialogText">You must prove control of your current wallet and your new wallet. This demo does not request either signature.</p><div class="signature-list"><span>1</span><p data-i18n="signatureOne">Current wallet proves the requested change.</p><span>2</span><p data-i18n="signatureTwo">New wallet proves you control the destination.</p></div><button class="dialog-button" id="close-dialog-bottom" data-i18n="understood">Understood</button></dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./recipient.js"></script>
+  </body>
+</html>

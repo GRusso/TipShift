@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="TipShift shift activation mockup" />
+    <title>TipShift — Start a shift</title>
+    <link rel="stylesheet" href="./shift-launch.css" />
+  </head>
+  <body>
+    <div class="ribbon" data-i18n="ribbon">DEMO ADMIN VIEW · Starting a shift does not write on-chain</div>
+    <main class="page">
+      <header>
+        <a class="brand" href="./landing.html"><span>T</span>tipshift</a>
+        <div class="controls">
+          <button id="language-switch" type="button">ES</button>
+          <button id="theme-switch" type="button"><span>☾</span> <b id="theme-label">Night</b></button>
+        </div>
+      </header>
+
+      <section class="intro">
+        <div>
+          <p class="eyebrow" data-i18n="eyebrow">CAFÉ NÓMADA · CÓRDOBA</p>
+          <h1 data-i18n="title">Ready to start this shift?</h1>
+          <p data-i18n="lead">Starting locks the recipients and percentages for this shift. New tips can then be collected through the public customer QR.</p>
+        </div>
+        <a class="back" href="./admin-recipient-links.html" data-i18n="back">← Review recipients</a>
+      </section>
+
+      <section class="launch-card" id="launch-card">
+        <div class="shift-heading">
+          <div><p class="eyebrow" data-i18n="shiftEyebrow">UPCOMING SHIFT</p><h2 data-i18n="shift">Lunch shift · 12:00–16:00</h2></div>
+          <span class="status draft" id="status" data-i18n="draft">Draft</span>
+        </div>
+
+        <div class="checks" aria-label="Shift start requirements">
+          <article><span class="check">✓</span><div><strong data-i18n="checkRecipients">3 tip recipients verified</strong><small data-i18n="checkRecipientsDetail">Each recipient linked their own wallet.</small></div><b>100%</b></article>
+          <article><span class="check">✓</span><div><strong data-i18n="checkAllocation">Tip allocation is complete</strong><small data-i18n="checkAllocationDetail">Percentages total 100%; no unassigned remainder.</small></div><b>100%</b></article>
+          <article><span class="check">✓</span><div><strong data-i18n="checkWindow">Collection window is set</strong><small data-i18n="checkWindowDetail">Customers can tip only while this shift is open.</small></div><b>4h</b></article>
+        </div>
+
+        <div class="lock-note"><span>⊙</span><p><strong data-i18n="lockTitle">What locks when you start?</strong><span data-i18n="lockText"> The recipient places and percentages. The admin still cannot view, choose, or alter a recipient wallet.</span></p></div>
+        <button class="primary" id="start-shift" type="button" data-i18n="start">Start and lock shift (demo)</button>
+      </section>
+
+      <section class="live-card" id="live-card" hidden aria-live="polite">
+        <div class="live-icon">✓</div>
+        <p class="eyebrow" data-i18n="liveEyebrow">SHIFT IS LIVE · DEMO</p>
+        <h2 data-i18n="liveTitle">The rule is now locked for this shift.</h2>
+        <p data-i18n="liveText">Guests can use one public QR to start a tip. It does not show wallets, names, or how the tip will be divided.</p>
+        <div class="live-actions"><a class="primary" href="./public-tip-qr.html" data-i18n="openQr">Open public tip QR →</a><a class="secondary" href="./index.html" data-i18n="openShift">View live shift</a></div>
+      </section>
+    </main>
+    <script src="./shift-launch.js"></script>
+  </body>
+</html>
