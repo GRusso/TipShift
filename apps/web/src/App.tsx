@@ -26,7 +26,7 @@ const text = {
     expired: 'QR needs a refresh. Nothing has been charged.',
     recipientTitle: 'Confirm your destination',
     recipientLead: 'A future implementation will verify a one-time, domain-bound wallet signature for this recipient place.',
-    connect: 'Connect wallet — demo',
+    walletStatus: 'WALLET STATUS', walletPending: 'Not connected in this demo', connect: 'Private flow inactive in this demo',
     safety: 'Implementation boundary',
     safetyText: 'This app has no backend, persistence, signatures, payment adapter, secret, or real QR. Those integrations must be implemented and tested separately.',
   },
@@ -52,7 +52,7 @@ const text = {
     expired: 'El QR necesita actualizarse. No se cobró nada.',
     recipientTitle: 'Confirmá tu destino',
     recipientLead: 'Una implementación futura verificará una firma de wallet única y vinculada al dominio para este lugar de destinatario.',
-    connect: 'Conectar wallet — demo',
+    walletStatus: 'ESTADO DE WALLET', walletPending: 'No conectada en esta demo', connect: 'Flujo privado inactivo en esta demo',
     safety: 'Límite de implementación',
     safetyText: 'Esta aplicación no tiene backend, persistencia, firmas, adaptador de pagos, secretos ni QR real. Esas integraciones se implementan y prueban por separado.',
   },
@@ -121,5 +121,5 @@ function Customer({ copy, unavailable, onToggle }: { copy: (typeof text)['en'] |
 }
 
 function Recipient({ copy }: { copy: (typeof text)['en'] | (typeof text)['es'] }) {
-  return <div className="two-col"><aside className="context"><p>PRIVATE RECIPIENT LINK</p><h3>Café Nómada</h3><small>Lunch shift · 12:00–16:00<br />Assigned share · 35%</small></aside><div><p className="eyebrow">STEP 1 OF 3</p><h2>{copy.recipientTitle}</h2><p className="description">{copy.recipientLead}</p><div className="wallet"><small>WALLET STATUS</small><code>Not connected in this demo</code></div><button className="primary">{copy.connect}</button></div></div>
+  return <div className="two-col"><aside className="context"><p>PRIVATE RECIPIENT LINK</p><h3>Café Nómada</h3><small>Lunch shift · 12:00–16:00<br />Assigned share · 35%</small></aside><div><p className="eyebrow">STEP 1 OF 3</p><h2>{copy.recipientTitle}</h2><p className="description">{copy.recipientLead}</p><div className="wallet"><small>{copy.walletStatus}</small><code>{copy.walletPending}</code></div><button className="primary" disabled>{copy.connect}</button></div></div>
 }
