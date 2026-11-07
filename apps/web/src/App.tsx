@@ -121,5 +121,5 @@ function Customer({ copy, unavailable, onToggle }: { copy: (typeof text)['en'] |
 }
 
 function Recipient({ copy }: { copy: (typeof text)['en'] | (typeof text)['es'] }) {
-  return <div className="two-col"><aside className="context"><p>PRIVATE RECIPIENT LINK</p><h3>Café Nómada</h3><small>Lunch shift · 12:00–16:00<br />Assigned share · 35%</small></aside><div><p className="eyebrow">STEP 1 OF 3</p><h2>{copy.recipientTitle}</h2><p className="description">{copy.recipientLead}</p><div className="wallet"><small>WALLET TO VERIFY</small><code>mateo.near</code></div><button className="primary">{copy.connect}</button></div></div>
+  return <div className="two-col"><aside className="context"><p>PRIVATE RECIPIENT LINK</p><h3>Café Nómada</h3><small>Lunch shift · 12:00–16:00<br />Assigned share · 35%</small></aside><div><p className="eyebrow">STEP 1 OF 3</p><h2>{copy.recipientTitle}</h2><p className="description">{copy.recipientLead}</p><div className="wallet"><small>WALLET STATUS</small><code>Not connected in this demo</code></div><button className="primary">{copy.connect}</button></div></div>
 }

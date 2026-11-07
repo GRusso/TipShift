@@ -2,34 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="refresh" content="0; url=./admin-recipient-links.html" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="TipShift tip allocation mockup" />
-    <title>TipShift — Configure tip allocation</title>
-    <link rel="stylesheet" href="./roster.css" />
+    <title>TipShift — Tip allocation</title>
   </head>
   <body>
-    <div class="demo-ribbon" data-i18n="ribbon">DEMO SETUP · No employee information is saved</div>
-    <main class="layout">
-      <aside class="rail">
-        <a class="brand" href="./landing.html"><span>T</span>tipshift</a>
-        <p class="location">CAFÉ NÓMADA · CÓRDOBA</p>
-        <div class="rail-label" data-i18n="shiftSetup">SHIFT SETUP</div>
-        <ol class="steps"><li class="done"><span>✓</span><div><strong data-i18n="details">Details</strong><small data-i18n="detailsNote">Lunch · 12:00–16:00</small></div></li><li class="active"><span>2</span><div><strong data-i18n="roster">Tip allocation</strong><small data-i18n="rosterNote">Wallets & shares</small></div></li><li><span>3</span><div><strong data-i18n="lock">Lock rule</strong><small data-i18n="lockNote">Start collection</small></div></li></ol>
-        <p class="rail-note" data-i18n="railNote">This allocation becomes immutable once the shift starts. Changes apply only to future, unstarted shifts.</p>
-      </aside>
-      <section class="content">
-        <header><a class="back" href="./onboarding.html">← <span data-i18n="back">Business setup</span></a><div class="controls"><button id="language-switch" type="button">ES</button><button id="theme-switch" type="button"><span>☾</span> <b id="theme-label">Night</b></button></div></header>
-        <section class="setup-card" id="setup-card">
-          <div class="intro"><div><p class="eyebrow" data-i18n="eyebrow">LUNCH SHIFT · DRAFT</p><h1 data-i18n="title">Set the tip allocation</h1><p data-i18n="description">Use internal slots, not employee names. Each participant later verifies control of their own receiving wallet with a signature.</p></div><div class="allocation" aria-label="Allocation total"><span data-i18n="allocated">ALLOCATED</span><strong id="total">100.0%</strong><small id="allocation-status">Ready to lock</small></div></div>
-          <div class="table-heading"><span data-i18n="participant">PARTICIPANT SLOT</span><span data-i18n="wallet">RECEIVING WALLET</span><span data-i18n="share">SHARE</span><span></span></div>
-          <div class="roster-list" id="roster-list"></div>
-          <div class="below-list"><button id="add-worker" type="button">+ <span data-i18n="addParticipant">Add participant</span></button><p data-i18n="walletRule">Each wallet must be unique and end in .near.</p></div>
-          <div class="notice"><span>⊙</span><p><strong data-i18n="privacyTitle">Privacy boundary</strong><span data-i18n="privacyText"> The team sees the rule and percentages for this shift, not other participants’ wallets.</span></p></div>
-          <div class="actions"><a href="./onboarding.html" data-i18n="cancel">Cancel</a><button id="lock-rule" type="button" disabled data-i18n="lockButton">Lock shift rule</button></div>
-        </section>
-        <section class="locked-card" id="locked-card" hidden aria-live="polite"><span>✓</span><p class="eyebrow" data-i18n="lockedEyebrow">SHIFT RULE LOCKED</p><h1 data-i18n="lockedTitle">The tip allocation is ready for collection.</h1><p data-i18n="lockedDescription">Participant wallets, percentages and allocation are now fixed for this shift. The next screen can receive customer tips.</p><a href="./tip.html" data-i18n="openDemo">Open customer tip demo →</a></section>
-      </section>
-    </main>
-    <script src="./roster.js"></script>
+    <p>
+      This screen moved to the private-recipient-link flow.
+      <a href="./admin-recipient-links.html">Continue</a>
+    </p>
   </body>
 </html>
