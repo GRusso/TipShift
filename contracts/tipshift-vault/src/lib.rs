@@ -194,7 +194,6 @@ impl TipShiftVault {
             storage_credit.0 > 0,
             "initial storage credit must be positive"
         );
-
         let storage_before = env::storage_usage();
         self.pools.insert(
             &pool_id,
@@ -218,15 +217,24 @@ impl TipShiftVault {
         // the pool and the storage-credit ledger itself.
         let mut credits = Self::storage_credits();
         credits.insert(&pool_id, &0);
-        let storage_cost = Self::storage_cost(env::storage_usage().saturating_sub(storage_before));
+        let storage_after = env::storage_usage();
+        let storage_delta = storage_after.saturating_sub(storage_before);
+        let storage_cost = Self::storage_cost(storage_delta);
         let required = storage_cost
             .checked_add(storage_credit.0)
             .expect("storage requirement overflow");
+        let attached = env::attached_deposit().as_yoctonear();
         assert!(
-            env::attached_deposit().as_yoctonear() >= required,
+            attached >= required,
             "attached deposit does not cover pool storage credit"
         );
-        credits.insert(&pool_id, &storage_credit.0);
+        // The exact byte cost is paid once. Any deposit above that cost stays
+        // owned by this pool as its reserve; it must never become untracked
+        // contract balance or subsidize another shift.
+        let credited = attached
+            .checked_sub(storage_cost)
+            .expect("attached deposit is below storage cost");
+        credits.insert(&pool_id, &credited);
     }
 
     /// Adds NEAR that only this pool may consume as its state grows. This also
@@ -1193,6 +1201,31 @@ mod tests {
             account("admin.testnet"),
             members(),
             U128(1),
+        );
+    }
+
+    #[test]
+    fn pool_creation_keeps_any_storage_overpayment_with_its_own_pool() {
+        let mut contract = new_contract();
+        let requested_credit = NearToken::from_near(1).as_yoctonear() / 100;
+        context_with_deposit(
+            "owner.testnet",
+            1_000,
+            NearToken::from_near(1).as_yoctonear(),
+        );
+        contract.create_pool(
+            "turn-with-buffer".to_string(),
+            account("admin.testnet"),
+            members(),
+            U128(requested_credit),
+        );
+
+        assert!(
+            contract
+                .get_storage_credit("turn-with-buffer".to_string())
+                .0
+                > requested_credit,
+            "the attached buffer must remain attributed to this pool"
         );
     }
 
