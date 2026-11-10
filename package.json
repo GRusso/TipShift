@@ -12,8 +12,13 @@
     "check": "pnpm typecheck && pnpm test:core && pnpm build"
   },
   "dependencies": {
+    "@near-js/transactions": "2.5.1",
+    "@near-wallet-selector/core": "10.1.4",
+    "@near-wallet-selector/meteor-wallet": "10.1.4",
+    "buffer": "6.0.3",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "util": "0.12.5"
   },
   "devDependencies": {
     "@types/react": "19.2.2",

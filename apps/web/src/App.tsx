@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import './testnet.css'
 // @ts-expect-error The deterministic core intentionally remains dependency-free JavaScript.
 import { TipShiftVault } from '../../../src/core/tipshift-vault.mjs'
+import { DEMO_ADMIN_ID, DEMO_POOL_ID, TOKEN_ACCOUNT_ID, VAULT_ACCOUNT_ID, connectTestnetWallet, explorerTransaction, openPaymentSession, payTip, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from './near'
 
 type Language = 'en' | 'es'
-type Screen = 'allocation' | 'launch' | 'customer' | 'recipient'
+type Screen = 'allocation' | 'launch' | 'customer' | 'recipient' | 'testnet'
 type State = 'draft' | 'collecting' | 'distributable' | 'dispute_voting' | 'disputed' | 'correction_review' | 'distributed'
 type Payout = { workerRef: string; amount: bigint }
 
@@ -19,7 +21,7 @@ const text = {
   en: {
     ribbon: 'FUNCTIONAL LOCAL DEMO · No wallet, QR or payment is live', admin: 'ADMIN INTERFACE', title: 'Tips with accountable distribution.',
     lead: 'This interface executes the deterministic TipShift rules covered by the core tests. It never creates a blockchain transaction.',
-    allocation: 'Tip allocation', launch: 'Start shift', customer: 'Public tip QR', recipient: 'Recipient review',
+    allocation: 'Tip allocation', launch: 'Start shift', customer: 'Public tip QR', recipient: 'Recipient review', testnet: 'Testnet checkout',
     allocationTitle: 'Anonymous recipients, locked shares', allocationLead: 'The branch administrator manages recipient slots and percentages, never a recipient wallet.',
     verified: 'Private link verified', launchTitle: 'Ready to start this shift?', launchLead: 'Starting locks recipients and shares. The local engine rejects later roster edits.',
     start: 'Start and lock shift', customerTitle: 'Customer tip entry point', customerLead: 'The QR is decorative. The test button below credits a local amount through the TipShift state machine.',
@@ -28,13 +30,18 @@ const text = {
     object: 'Recipient 01 raises objection', support: 'Recipient 02 supports objection', correct: 'Admin publishes corrected rule',
     accept: 'Recipients accept correction', release: 'Release deterministic distribution', released: 'Distribution prepared',
     state: 'SHIFT STATE', balance: 'LOCAL TEST BALANCE', event: 'LATEST EVENT', error: 'Rule rejected', reset: 'Reset local demo',
-    safety: 'Integration boundary', safetyText: 'Local interactions invoke the TipShift core only. Wallet signatures, persistence, NEAR Intents and NEP-141 transfers remain separate testnet work.',
+    safety: 'Integration boundary', safetyText: 'Panels 1–4 invoke the local TipShift core only. The separate Testnet checkout is the only panel that requests a wallet transaction; persistence, recipient claims and disputes are still separate work.',
+    testnetTitle: 'Real NEAR testnet checkout', testnetLead: 'The admin opens an exact test-USDC session. The customer connects Meteor Wallet and pays the opaque reference through NEP-141.',
+    testnetPool: 'Pool status', refresh: 'Refresh testnet state', adminConnect: 'Connect as branch admin', customerConnect: 'Connect customer wallet',
+    amount: 'Test-USDC amount', openSession: 'Open exact payment session', customerLink: 'Customer test link', pay: 'Pay exact tip on testnet',
+    waiting: 'Waiting for an active pool', connected: 'Connected', sessionOpen: 'Session opened', paymentSubmitted: 'Payment submitted; verify its final state in the explorer.', testnetNote: 'Testnet only. The customer pays intake gas; the branch pays payout gas. No seed phrase is requested.',
+    poolMissing: 'The presentation pool is not active yet.', notAdmin: 'This connected wallet is not the configured branch administrator.', transaction: 'Explorer receipt',
     states: { draft: 'Draft', collecting: 'Collecting', distributable: 'Ready to distribute', dispute_voting: 'Dispute voting', disputed: 'Disputed', correction_review: 'Correction review', distributed: 'Distributed' },
   },
   es: {
     ribbon: 'DEMO FUNCIONAL LOCAL · No hay wallet, QR ni pago activo', admin: 'INTERFAZ DE ADMIN', title: 'Propinas con distribución verificable.',
     lead: 'Esta interfaz ejecuta las reglas deterministas de TipShift cubiertas por las pruebas del núcleo. Nunca crea una transacción blockchain.',
-    allocation: 'Destinatarios de propina', launch: 'Iniciar turno', customer: 'QR público', recipient: 'Revisión de destinatarios',
+    allocation: 'Destinatarios de propina', launch: 'Iniciar turno', customer: 'QR público', recipient: 'Revisión de destinatarios', testnet: 'Checkout testnet',
     allocationTitle: 'Destinatarios anónimos, porcentajes bloqueados', allocationLead: 'El administrador gestiona lugares y porcentajes, nunca la wallet de un destinatario.',
     verified: 'Link privado verificado', launchTitle: '¿Listo para iniciar este turno?', launchLead: 'Iniciar bloquea destinatarios y porcentajes. El motor local rechaza cambios posteriores.',
     start: 'Iniciar y bloquear turno', customerTitle: 'Entrada de propina del cliente', customerLead: 'El QR es decorativo. El botón acredita un monto local de prueba mediante la máquina de estados TipShift.',
@@ -43,7 +50,12 @@ const text = {
     object: 'Destinatario 01 abre objeción', support: 'Destinatario 02 apoya objeción', correct: 'Admin publica regla corregida',
     accept: 'Destinatarios aceptan corrección', release: 'Liberar distribución determinista', released: 'Distribución preparada',
     state: 'ESTADO DEL TURNO', balance: 'SALDO LOCAL DE PRUEBA', event: 'ÚLTIMO EVENTO', error: 'Regla rechazada', reset: 'Reiniciar demo local',
-    safety: 'Límite de integración', safetyText: 'Las interacciones locales invocan sólo el núcleo TipShift. Firmas, persistencia, NEAR Intents y transferencias NEP-141 siguen siendo trabajo separado de testnet.',
+    safety: 'Límite de integración', safetyText: 'Los paneles 1–4 invocan sólo el núcleo local de TipShift. El checkout Testnet separado es el único panel que solicita una transacción wallet; persistencia, reclamos de destinatario y disputas siguen siendo trabajo separado.',
+    testnetTitle: 'Checkout real en NEAR testnet', testnetLead: 'El administrador abre una sesión exacta de USDC de prueba. El cliente conecta Meteor Wallet y paga la referencia opaca mediante NEP-141.',
+    testnetPool: 'Estado del pool', refresh: 'Actualizar estado testnet', adminConnect: 'Conectar como administrador', customerConnect: 'Conectar wallet del cliente',
+    amount: 'Monto USDC de prueba', openSession: 'Abrir sesión de pago exacta', customerLink: 'Link de prueba del cliente', pay: 'Pagar propina exacta en testnet',
+    waiting: 'Esperando un pool activo', connected: 'Conectada', sessionOpen: 'Sesión abierta', paymentSubmitted: 'Pago enviado; verificá su estado final en el explorer.', testnetNote: 'Sólo testnet. El cliente paga el gas de ingreso; la sucursal paga el gas de reparto. Nunca se pide seed phrase.',
+    poolMissing: 'El pool de presentación todavía no está activo.', notAdmin: 'La wallet conectada no es la administradora configurada.', transaction: 'Comprobante en explorer',
     states: { draft: 'Borrador', collecting: 'Recaudando', distributable: 'Lista para distribuir', dispute_voting: 'Votación de disputa', disputed: 'En disputa', correction_review: 'Revisión corregida', distributed: 'Distribuida' },
   },
 } as const
@@ -83,7 +95,7 @@ export function App() {
         <button onClick={() => setLanguage(language === 'en' ? 'es' : 'en')}>{language === 'en' ? 'ES' : 'EN'}</button><button onClick={() => setNight(!night)}>{night ? '☀' : '☾'}</button><button onClick={reset}>{copy.reset}</button>
       </div></header>
       <section className="hero"><p className="eyebrow">TIPSHIFT · FUNCTIONAL ENGINE DEMO</p><h1>{copy.title}</h1><p>{copy.lead}</p></section>
-      <nav className="flow">{(['allocation', 'launch', 'customer', 'recipient'] as Screen[]).map((item, index) => <button key={item} className={screen === item ? 'selected' : ''} onClick={() => setScreen(item)}>{index + 1}. {copy[item]}</button>)}</nav>
+      <nav className="flow">{(['allocation', 'launch', 'customer', 'recipient', 'testnet'] as Screen[]).map((item, index) => <button key={item} className={screen === item ? 'selected' : ''} onClick={() => setScreen(item)}>{index + 1}. {copy[item]}</button>)}</nav>
       <section className="panel">
         <Status copy={copy} state={state} balance={view.balance} event={event} />
         {error && <p className="error" role="alert"><strong>{copy.error}:</strong> {error}</p>}
@@ -91,6 +103,7 @@ export function App() {
         {screen === 'launch' && <Launch copy={copy} state={state} start={() => run(() => vault.startShift({ poolId, adminRef }))} />}
         {screen === 'customer' && <Customer copy={copy} state={state} fund={fund} close={() => run(() => vault.closeCollection({ poolId, adminRef }))} />}
         {screen === 'recipient' && <Review copy={copy} state={state} object={() => run(() => vault.raiseObjection({ poolId, workerRef: 'recipient-01', note: 'Demo review.' }))} support={() => run(() => vault.castDisputeVote({ poolId, workerRef: 'recipient-02', supports: true }))} correct={() => run(() => vault.submitCorrectedDistribution({ poolId, adminRef, roster }))} accept={() => run(() => ['recipient-01', 'recipient-02', 'recipient-03'].forEach((workerRef) => vault.castCorrectionVote({ poolId, workerRef, accepts: true })))} release={release} payouts={payouts} />}
+        {screen === 'testnet' && <TestnetCheckout copy={copy} />}
       </section><aside className="safety"><strong>{copy.safety}.</strong> {copy.safetyText}</aside>
     </div>
   </main>
@@ -111,4 +124,76 @@ function Customer({ copy, state, fund, close }: { copy: Copy; state: State; fund
 function Review({ copy, state, object, support, correct, accept, release, payouts }: { copy: Copy; state: State; object: () => void; support: () => void; correct: () => void; accept: () => void; release: () => void; payouts: Payout[] }) {
   const action = state === 'distributable' ? <><button className="secondary" onClick={object}>{copy.object}</button><button className="primary" onClick={release}>{copy.release}</button></> : state === 'dispute_voting' ? <button className="primary" onClick={support}>{copy.support}</button> : state === 'disputed' ? <button className="primary" onClick={correct}>{copy.correct}</button> : state === 'correction_review' ? <button className="primary" onClick={accept}>{copy.accept}</button> : null
   return <><p className="eyebrow">RECIPIENT PROTECTION</p><h2>{copy.recipientTitle}</h2><p className="description">{copy.recipientLead}</p><div className="actions">{action}</div>{payouts.length > 0 && <div className="payouts"><strong>{copy.released}</strong>{payouts.map((payout) => <span key={payout.workerRef}>{payout.workerRef.replace('recipient-', 'Tip recipient ')} · {usdc(payout.amount)}</span>)}</div>}</>
+}
+
+function TestnetCheckout({ copy }: { copy: Copy }) {
+  const [pool, setPool] = useState<PoolSummary | null | undefined>(undefined)
+  const [accountId, setAccountId] = useState<string | null>(null)
+  const [amount, setAmount] = useState('5')
+  const [checkout, setCheckout] = useState<{ paymentRef: string; amount: string; link: string } | null>(null)
+  const [receipt, setReceipt] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const urlCheckout = useMemo(() => {
+    const query = new URLSearchParams(window.location.search)
+    const paymentRef = query.get('payment_ref')
+    const paymentAmount = query.get('amount')
+    return paymentRef && paymentAmount ? { paymentRef, amount: paymentAmount } : null
+  }, [])
+  const activeCheckout = checkout ?? urlCheckout
+
+  const refresh = async () => {
+    try { setPool(await readDemoPool()); setMessage(null) }
+    catch (caught) { setMessage(caught instanceof Error ? caught.message : copy.poolMissing) }
+  }
+  useEffect(() => { void refresh() }, [])
+
+  const connectAdmin = async () => {
+    setBusy(true)
+    try {
+      const connection = await connectTestnetWallet({ contractId: VAULT_ACCOUNT_ID, methodNames: ['open_payment_session'] })
+      if (connection.accountId !== DEMO_ADMIN_ID) throw new Error(copy.notAdmin)
+      setAccountId(connection.accountId); setMessage(`${copy.connected}: ${connection.accountId}`)
+    } catch (caught) { setMessage(caught instanceof Error ? caught.message : String(caught)) }
+    finally { setBusy(false) }
+  }
+  const openSession = async () => {
+    if (!accountId) return setMessage(copy.notAdmin)
+    setBusy(true)
+    try {
+      const atomic = toAtomicUsdc(amount)
+      const reference = paymentRef()
+      const hash = await openPaymentSession({ accountId, paymentRef: reference, amount: atomic })
+      const link = new URL(window.location.href)
+      link.searchParams.set('payment_ref', reference)
+      link.searchParams.set('amount', amount)
+      setCheckout({ paymentRef: reference, amount, link: link.toString() })
+      setReceipt(hash); setMessage(copy.sessionOpen); await refresh()
+    } catch (caught) { setMessage(caught instanceof Error ? caught.message : String(caught)) }
+    finally { setBusy(false) }
+  }
+  const pay = async () => {
+    if (!activeCheckout) return
+    setBusy(true)
+    try {
+      const connection = await connectTestnetWallet({ contractId: TOKEN_ACCOUNT_ID, methodNames: ['ft_transfer_call'] })
+      const hash = await payTip({ accountId: connection.accountId, paymentRef: activeCheckout.paymentRef, amount: toAtomicUsdc(activeCheckout.amount) })
+      setAccountId(connection.accountId); setReceipt(hash); setMessage(copy.paymentSubmitted); await refresh()
+    } catch (caught) { setMessage(caught instanceof Error ? caught.message : String(caught)) }
+    finally { setBusy(false) }
+  }
+
+  return <section className="testnet-checkout">
+    <p className="eyebrow">LIVE TESTNET · NEP-141</p><h2>{copy.testnetTitle}</h2><p className="description">{copy.testnetLead}</p>
+    <div className="testnet-meta"><span><small>{copy.testnetPool}</small><strong>{pool ? `${pool.state} · ${usdc(BigInt(pool.balance))}` : copy.waiting}</strong></span><span><small>CONTRACT</small><strong>{VAULT_ACCOUNT_ID}</strong></span></div>
+    {pool === null && <p className="error">{copy.poolMissing}</p>}
+    <div className="testnet-grid">
+      <div><p className="eyebrow">BRANCH ADMIN</p><button className="secondary" disabled={busy} onClick={connectAdmin}>{copy.adminConnect}</button><label>{copy.amount}<input value={amount} inputMode="decimal" onChange={(event) => setAmount(event.target.value)} /></label><button className="primary" disabled={busy || !accountId || !pool || pool.state !== 'collecting'} onClick={openSession}>{copy.openSession}</button></div>
+      <div><p className="eyebrow">CUSTOMER</p>{activeCheckout ? <><p className="checkout-ref">{activeCheckout.paymentRef}</p><p className="description">{activeCheckout.amount} test-USDC</p><button className="primary" disabled={busy || !pool || pool.state !== 'collecting'} onClick={pay}>{copy.pay}</button></> : <p className="description">{copy.customerLink}: {copy.waiting}</p>}</div>
+    </div>
+    {checkout && <p className="share-link"><strong>{copy.customerLink}:</strong> <a href={checkout.link}>{checkout.link}</a></p>}
+    {message && <p className="testnet-message">{message}</p>}
+    {receipt && <p className="testnet-message"><a href={explorerTransaction(receipt)} target="_blank" rel="noreferrer">{copy.transaction} ↗</a></p>}
+    <div className="actions"><button className="secondary" disabled={busy} onClick={() => void refresh()}>{copy.refresh}</button></div><aside className="safety"><strong>Testnet.</strong> {copy.testnetNote}</aside>
+  </section>
 }

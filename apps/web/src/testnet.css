@@ -1,0 +1,16 @@
+.testnet-checkout { display: grid; gap: 16px; }
+.testnet-meta, .testnet-grid { display: grid; gap: 1px; border: 1px solid #d9e3dc; border-radius: 12px; overflow: hidden; background: #d9e3dc; }
+.testnet-meta { grid-template-columns: 1fr 1fr; }
+.testnet-meta span, .testnet-grid > div { padding: 15px; background: #f7faf7; }
+.night .testnet-meta span, .night .testnet-grid > div { background: #102820; }
+.testnet-meta small { display: block; margin-bottom: 5px; color: #718179; font: 600 9px ui-monospace, monospace; letter-spacing: .08em; }
+.testnet-meta strong { display: block; overflow: hidden; font: 600 11px ui-monospace, monospace; line-height: 1.4; overflow-wrap: anywhere; }
+.testnet-grid { grid-template-columns: 1fr 1fr; }
+.testnet-grid > div { display: grid; align-content: start; gap: 12px; min-height: 190px; }
+.testnet-grid label { display: grid; gap: 6px; color: #718179; font-size: 11px; font-weight: 800; }
+.testnet-grid input { border: 1px solid #d9e3dc; border-radius: 8px; background: #fff; padding: 10px; color: #10251f; font: 600 13px ui-monospace, monospace; }
+.night .testnet-grid input { border-color: #315148; background: #0b1916; color: #e8f5ee; }
+.checkout-ref { overflow-wrap: anywhere; border-radius: 8px; background: #eff7f0; padding: 10px; color: #087e4a; font: 600 11px ui-monospace, monospace; }
+.share-link, .testnet-message { margin: 0; border-radius: 9px; background: #eff7f0; padding: 11px; color: #087e4a; font: 500 11px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
+.share-link a, .testnet-message a { color: #087e4a; font-weight: 800; }
+@media (max-width: 700px) { .testnet-meta, .testnet-grid { grid-template-columns: 1fr; } }
