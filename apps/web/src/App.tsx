@@ -33,7 +33,7 @@ const text = {
     safety: 'Integration boundary', safetyText: 'Panels 1–4 invoke the local TipShift core only. The separate Testnet checkout is the only panel that requests a wallet transaction; persistence, recipient claims and disputes are still separate work.',
     testnetTitle: 'Real NEAR testnet checkout', testnetLead: 'The admin opens an exact test-USDC session. The customer connects Meteor Wallet and pays the opaque reference through NEP-141.',
     testnetPool: 'Pool status', refresh: 'Refresh testnet state', adminConnect: 'Connect as branch admin', customerConnect: 'Connect customer wallet', noSession: 'The branch admin must open an exact payment session first.',
-    amount: 'Test-USDC amount', openSession: 'Open exact payment session', customerLink: 'Customer test link', pay: 'Pay exact tip on testnet',
+    amount: 'Test-USDC amount', openSession: 'Open exact payment session', customerLink: 'Customer test link', publicQr: 'Public testnet payment QR', qrSafety: 'This QR contains only the opaque, one-time checkout reference. It never contains the pool, recipients, wallets or allocation.', pay: 'Pay exact tip on testnet',
     waiting: 'Waiting for an active pool', connected: 'Connected', sessionOpen: 'Session opened', paymentSubmitted: 'Payment submitted; verify its final state in the explorer.', testnetNote: 'Testnet only. The customer pays intake gas; the branch pays payout gas. No seed phrase is requested.',
     poolMissing: 'The presentation pool is not active yet.', notAdmin: 'This connected wallet is not the configured branch administrator.', transaction: 'Explorer receipt',
     states: { draft: 'Draft', collecting: 'Collecting', distributable: 'Ready to distribute', dispute_voting: 'Dispute voting', disputed: 'Disputed', correction_review: 'Correction review', distributed: 'Distributed' },
@@ -53,7 +53,7 @@ const text = {
     safety: 'Límite de integración', safetyText: 'Los paneles 1–4 invocan sólo el núcleo local de TipShift. El checkout Testnet separado es el único panel que solicita una transacción wallet; persistencia, reclamos de destinatario y disputas siguen siendo trabajo separado.',
     testnetTitle: 'Checkout real en NEAR testnet', testnetLead: 'El administrador abre una sesión exacta de USDC de prueba. El cliente conecta Meteor Wallet y paga la referencia opaca mediante NEP-141.',
     testnetPool: 'Estado del pool', refresh: 'Actualizar estado testnet', adminConnect: 'Conectar como administrador', customerConnect: 'Conectar wallet del cliente', noSession: 'El administrador de sucursal debe abrir primero una sesión exacta de pago.',
-    amount: 'Monto USDC de prueba', openSession: 'Abrir sesión de pago exacta', customerLink: 'Link de prueba del cliente', pay: 'Pagar propina exacta en testnet',
+    amount: 'Monto USDC de prueba', openSession: 'Abrir sesión de pago exacta', customerLink: 'Link de prueba del cliente', publicQr: 'QR público de pago testnet', qrSafety: 'Este QR sólo contiene la referencia opaca de checkout de un solo uso. Nunca contiene el pool, destinatarios, wallets ni porcentajes.', pay: 'Pagar propina exacta en testnet',
     waiting: 'Esperando un pool activo', connected: 'Conectada', sessionOpen: 'Sesión abierta', paymentSubmitted: 'Pago enviado; verificá su estado final en el explorer.', testnetNote: 'Sólo testnet. El cliente paga el gas de ingreso; la sucursal paga el gas de reparto. Nunca se pide seed phrase.',
     poolMissing: 'El pool de presentación todavía no está activo.', notAdmin: 'La wallet conectada no es la administradora configurada.', transaction: 'Comprobante en explorer',
     states: { draft: 'Borrador', collecting: 'Recaudando', distributable: 'Lista para distribuir', dispute_voting: 'Votación de disputa', disputed: 'En disputa', correction_review: 'Revisión corregida', distributed: 'Distribuida' },
@@ -131,7 +131,7 @@ function TestnetCheckout({ copy }: { copy: Copy }) {
   const [pool, setPool] = useState<PoolSummary | null | undefined>(undefined)
   const [accountId, setAccountId] = useState<string | null>(null)
   const [amount, setAmount] = useState('5')
-  const [checkout, setCheckout] = useState<{ paymentRef: string; amount: string; link: string } | null>(null)
+  const [checkout, setCheckout] = useState<{ paymentRef: string; amount: string; link: string; qrDataUrl: string } | null>(null)
   const [receipt, setReceipt] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -168,7 +168,9 @@ function TestnetCheckout({ copy }: { copy: Copy }) {
       const link = new URL(window.location.href)
       link.searchParams.set('payment_ref', reference)
       link.searchParams.set('amount', amount)
-      setCheckout({ paymentRef: reference, amount, link: link.toString() })
+      const { toDataURL } = await import('qrcode')
+      const qrDataUrl = await toDataURL(link.toString(), { errorCorrectionLevel: 'M', margin: 1, width: 240 })
+      setCheckout({ paymentRef: reference, amount, link: link.toString(), qrDataUrl })
       setReceipt(hash); setMessage(copy.sessionOpen); await refresh()
     } catch (caught) { setMessage(caught instanceof Error ? caught.message : String(caught)) }
     finally { setBusy(false) }
@@ -192,7 +194,7 @@ function TestnetCheckout({ copy }: { copy: Copy }) {
       <div><p className="eyebrow">BRANCH ADMIN</p><button className="secondary" disabled={busy} onClick={connectAdmin}>{copy.adminConnect}</button><label>{copy.amount}<input value={amount} inputMode="decimal" onChange={(event) => setAmount(event.target.value)} /></label><button className="primary" disabled={busy || !accountId || !pool || pool.state !== 'collecting'} onClick={openSession}>{copy.openSession}</button></div>
       <div><p className="eyebrow">CUSTOMER</p>{activeCheckout ? <><p className="checkout-ref">{activeCheckout.paymentRef}</p><p className="description">{activeCheckout.amount} test-USDC</p><button className="primary" disabled={busy || !pool || pool.state !== 'collecting'} onClick={pay}>{copy.pay}</button></> : <p className="description">{copy.noSession}</p>}</div>
     </div>
-    {checkout && <p className="share-link"><strong>{copy.customerLink}:</strong> <a href={checkout.link}>{checkout.link}</a></p>}
+    {checkout && <div className="public-checkout-qr"><p className="eyebrow">{copy.publicQr}</p><img src={checkout.qrDataUrl} alt={copy.publicQr} /><p>{copy.qrSafety}</p><p className="share-link"><strong>{copy.customerLink}:</strong> <a href={checkout.link}>{checkout.link}</a></p></div>}
     {message && <p className="testnet-message">{message}</p>}
     {receipt && <p className="testnet-message"><a href={explorerTransaction(receipt)} target="_blank" rel="noreferrer">{copy.transaction} ↗</a></p>}
     <div className="actions"><button className="secondary" disabled={busy} onClick={() => void refresh()}>{copy.refresh}</button></div><aside className="safety"><strong>Testnet.</strong> {copy.testnetNote}</aside>

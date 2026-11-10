@@ -13,4 +13,8 @@
 .checkout-ref { overflow-wrap: anywhere; border-radius: 8px; background: #eff7f0; padding: 10px; color: #087e4a; font: 600 11px ui-monospace, monospace; }
 .share-link, .testnet-message { margin: 0; border-radius: 9px; background: #eff7f0; padding: 11px; color: #087e4a; font: 500 11px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
 .share-link a, .testnet-message a { color: #087e4a; font-weight: 800; }
+.public-checkout-qr { display: grid; justify-items: start; gap: 9px; border: 1px solid #d9e3dc; border-radius: 12px; padding: 15px; }
+.public-checkout-qr .eyebrow, .public-checkout-qr p { margin: 0; }
+.public-checkout-qr img { width: 180px; height: 180px; border-radius: 8px; background: #fff; image-rendering: pixelated; }
+.public-checkout-qr > p:not(.eyebrow):not(.share-link) { color: #718179; font-size: 12px; line-height: 1.5; }
 @media (max-width: 700px) { .testnet-meta, .testnet-grid { grid-template-columns: 1fr; } }
