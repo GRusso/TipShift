@@ -34,8 +34,9 @@ Meteor Wallet confirmation, calls the NEP-141 test token. It uses test-USDC;
 it never targets mainnet or real customer funds.
 
 The default configuration points to the isolated presentation pool. To point
-the same frontend to a separately provisioned testnet pool, use public Vite
-configuration (no secrets) before `pnpm dev` or `pnpm build`:
+the same frontend to a separately provisioned testnet pool, create a local
+`.env.local` with public Vite configuration (no secrets) before `pnpm dev` or
+`pnpm build`:
 
 ```bash
 VITE_TIPSHIFT_VAULT_ID=your-vault.testnet
