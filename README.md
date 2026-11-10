@@ -50,6 +50,21 @@ the resulting opaque reference. The contract rejects a different amount or a
 reused reference. A wallet transaction still requires browser-level testing
 with Meteor Wallet; compilation and RPC reads alone do not prove it.
 
+## Recipient claim boundary
+
+`src/server/recipient-claim-coordinator.mjs` is the server-only domain core
+for the separate, private recipient-link flow. It issues opaque, expiring,
+single-use claim tokens; binds a verified wallet to one anonymous place; and
+returns only a verification status to the administrator. It rejects the same
+wallet in two places of one shift while permitting that wallet in a future
+shift. The wallet-bearing roster is internal-only output for contract
+provisioning and must never be returned from an admin or public endpoint.
+
+The repository does **not** yet contain an HTTP adapter, durable data store,
+or browser-to-server NEP-413 proof test for this core. An adapter must verify
+both the NEP-413 signature and that its public key belongs to the claimed
+NEAR account before calling `completeClaim`.
+
 ## Important boundaries
 
 - Panels 1–4 run the local deterministic core. The separate fifth panel is a
