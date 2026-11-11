@@ -182,7 +182,21 @@ async function handleAdminCreateTurn(request: Request, payload: Record<string, u
   if (authorizationError || authorized !== true) return { status: 403, payload: { error: 'admin_forbidden' } }
   const { data: turnRef, error } = await principal.service.rpc('tipshift_admin_create_turn', { p_admin_user_id: principal.userId, ...turn.rpcArgs })
   if (error || !turnRef) return { status: 409, payload: { error: 'turn_unavailable' } }
+  const { data: opened, error: openError } = await principal.service.rpc('tipshift_admin_open_claims', { p_admin_user_id: principal.userId, p_turn_ref: turnRef })
+  if (openError || opened !== true) return { status: 409, payload: { error: 'turn_unavailable' } }
   return { status: 201, payload: { turnRef, claimLinks: turn.claimLinks } }
+}
+
+async function handleAdminTurn(request: Request, payload: Record<string, unknown>, action: 'admin_turn_status' | 'admin_start_turn') {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const turnRef = requiredUuid(payload.turnRef, 'turnRef')
+  if (action === 'admin_turn_status') {
+    const { data, error } = await principal.service.rpc('tipshift_admin_turn_status', { p_admin_user_id: principal.userId, p_turn_ref: turnRef })
+    return error || !data ? { status: 404, payload: { error: 'turn_unavailable' } } : { status: 200, payload: { turn: data } }
+  }
+  const { data, error } = await principal.service.rpc('tipshift_admin_start_turn', { p_admin_user_id: principal.userId, p_turn_ref: turnRef })
+  return error || data !== true ? { status: 409, payload: { error: 'turn_not_ready' } } : { status: 200, payload: { started: true } }
 }
 
 async function handleAdminScopes(request: Request) {
@@ -227,6 +241,10 @@ Deno.serve(async (request) => {
     }
     if (action === 'admin_register_branch') {
       const result = await handleAdminRegisterBranch(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_turn_status' || action === 'admin_start_turn') {
+      const result = await handleAdminTurn(request, payload, action)
       return json(result.payload, result.status, cors)
     }
     if (action === 'admin_create_turn') {

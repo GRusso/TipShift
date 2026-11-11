@@ -1,10 +1,12 @@
 import { createClient, type Session } from '@supabase/supabase-js'
 import { useEffect, useMemo, useState } from 'react'
+import { toDataURL } from 'qrcode'
 import { loadPrivateLabels, savePrivateLabels, type PrivateLabels } from './private-labels'
 
 type Group = { groupRef: string; shareBps: number }
 type Recipient = { groupRef: string; recipientSlot: number; shareWeight: number }
 type ClaimLink = { recipientSlot: number; url: string }
+type TurnStatus = { turnRef: string; state: 'claiming' | 'collecting'; recipientCount: number; verifiedCount: number }
 type AdminScope = { venue_ref: string; branch_ref: string | null; branch_label: string | null; role: 'organization_admin' | 'branch_admin' }
 
 const PERCENT_SCALE = 10_000
@@ -53,6 +55,9 @@ export function AdminTurnCreator() {
   const [labels, setLabels] = useState<PrivateLabels>({ groups: {}, recipients: {} })
   const [labelsReady, setLabelsReady] = useState(false)
   const [claimLinks, setClaimLinks] = useState<ClaimLink[]>([])
+  const [claimQrs, setClaimQrs] = useState<Record<number, string>>({})
+  const [turnRef, setTurnRef] = useState<string | null>(null)
+  const [turnStatus, setTurnStatus] = useState<TurnStatus | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -65,6 +70,7 @@ export function AdminTurnCreator() {
 
   useEffect(() => { void loadPrivateLabels().then((value) => { setLabels(value); setLabelsReady(true) }) }, [])
   useEffect(() => { if (labelsReady) void savePrivateLabels(labels) }, [labels, labelsReady])
+  useEffect(() => { void Promise.all(claimLinks.map(async (link) => [link.recipientSlot, await toDataURL(link.url, { width: 220, margin: 1 })] as const)).then((pairs) => setClaimQrs(Object.fromEntries(pairs))) }, [claimLinks])
 
   const refreshScopes = async () => {
     if (!client || !session) return
@@ -109,7 +115,7 @@ export function AdminTurnCreator() {
       setMessage('Choose a valid private claim window.')
       return
     }
-    setBusy(true); setMessage(null); setClaimLinks([])
+    setBusy(true); setMessage(null); setClaimLinks([]); setClaimQrs({}); setTurnRef(null); setTurnStatus(null)
     const { data, error } = await client.functions.invoke('tipshift-claims', {
       body: {
         action: 'admin_create_turn',
@@ -127,7 +133,22 @@ export function AdminTurnCreator() {
       return
     }
     setClaimLinks(result.claimLinks)
+    setTurnRef(result.turnRef ?? null)
+    setTurnStatus(result.turnRef ? { turnRef: result.turnRef, state: 'claiming', recipientCount: result.claimLinks.length, verifiedCount: 0 } : null)
     setMessage(`Private shift created: ${String(result.turnRef)}`)
+  }
+
+  const refreshTurnStatus = async () => {
+    if (!client || !turnRef) return
+    const { data, error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_turn_status', turnRef } })
+    const result = data as { turn?: TurnStatus } | null
+    if (!error && result?.turn) setTurnStatus(result.turn)
+  }
+  const startTurn = async () => {
+    if (!client || !turnRef) return
+    setBusy(true); const { error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_start_turn', turnRef } }); setBusy(false)
+    if (error) { setMessage('Every recipient must verify before the shift can start.'); return }
+    await refreshTurnStatus(); setMessage('Shift started. Groups and recipients are now locked.')
   }
 
   const registerBranch = async () => {
@@ -193,7 +214,8 @@ export function AdminTurnCreator() {
     <button className="secondary" disabled={recipients.length >= 100} onClick={addRecipient}>Add anonymous slot</button>
     {!recipientPercentagesValid && <p className="admin-message">Each group must allocate exactly 100% among its recipient slots.</p>}
     <div className="actions"><button className="primary" disabled={busy || shareTotal !== PERCENT_SCALE || !recipientPercentagesValid || !selectedBranchRef} onClick={() => void createTurn()}>Create shift and private links</button></div>
+    {turnStatus && <div className="admin-message"><strong>Recipient verification:</strong> {turnStatus.verifiedCount} / {turnStatus.recipientCount}. <button className="secondary" disabled={busy} onClick={() => void refreshTurnStatus()}>Refresh</button><button className="primary" disabled={busy || turnStatus.state !== 'claiming' || turnStatus.verifiedCount !== turnStatus.recipientCount} onClick={() => void startTurn()}>Start and lock shift</button></div>}
     {message && <p className="admin-message">{message}</p>}
-    {claimLinks.length > 0 && <div className="claim-links"><h2>Private recipient links</h2><p>Distribute each link privately. The fragment token is never written to the server database.</p>{claimLinks.map((link) => <article key={link.recipientSlot}><strong>Anonymous slot {link.recipientSlot}</strong><a href={link.url}>{link.url}</a></article>)}</div>}
+    {claimLinks.length > 0 && <div className="claim-links"><h2>Private recipient QR codes</h2><p>Give each QR only to its assigned recipient. The fragment token is never written to the server database.</p>{claimLinks.map((link) => <article key={link.recipientSlot}><strong>{labels.recipients[String(link.recipientSlot)] || `Anonymous slot ${link.recipientSlot}`}</strong>{claimQrs[link.recipientSlot] && <img src={claimQrs[link.recipientSlot]} alt={`Private QR for recipient ${link.recipientSlot}`} />}<a href={link.url}>{link.url}</a></article>)}</div>}
   </section></main>
 }
