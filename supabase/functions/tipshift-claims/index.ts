@@ -72,16 +72,19 @@ async function importKey(name: string, algorithm: AlgorithmIdentifier | AesKeyAl
 }
 
 async function walletCommitment(turnRef: string, accountId: string) {
-  const key = await importKey('TIPSHIFT_WALLET_COMMITMENT_KEY_B64', { name: 'HMAC', hash: 'SHA-256' }, ['sign'])
-  return new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(`${turnRef}:${accountId}`)))
+  // Preserve the deployed key names and domain separation; rotating either
+  // requires a deliberate migration and decryption plan, not a code deploy.
+  const key = await importKey('TIPSHIFT_WALLET_COMMITMENT_KEY', { name: 'HMAC', hash: 'SHA-256' }, ['sign'])
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(`TipShift wallet seal v1\n${turnRef}\n${accountId}`)))
 }
 
 async function sealWallet(turnRef: string, accountId: string) {
-  const key = await importKey('TIPSHIFT_WALLET_ENCRYPTION_KEY_B64', { name: 'AES-GCM', length: 256 }, ['encrypt'])
+  const key = await importKey('TIPSHIFT_WALLET_ENCRYPTION_KEY', { name: 'AES-GCM', length: 256 }, ['encrypt'])
   const iv = crypto.getRandomValues(new Uint8Array(12))
-  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: encoder.encode(turnRef) }, key, encoder.encode(accountId)))
-  const sealed = new Uint8Array(iv.byteLength + ciphertext.byteLength)
-  sealed.set(iv); sealed.set(ciphertext, iv.byteLength)
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: encoder.encode(`TipShift wallet seal v1\n${turnRef}`) }, key, encoder.encode(accountId)))
+  const sealed = new Uint8Array(1 + iv.byteLength + ciphertext.byteLength)
+  sealed[0] = 1
+  sealed.set(iv, 1); sealed.set(ciphertext, 1 + iv.byteLength)
   return sealed
 }
 
@@ -156,7 +159,8 @@ async function handleClaim(action: string, payload: Record<string, unknown>) {
 async function handleAdminCreateTurn(request: Request, payload: Record<string, unknown>) {
   const principal = await authenticatedAdmin(request)
   if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
-  const turn = await buildAdminTurnRequest(payload, { appUrl: requiredEnvironment('TIPSHIFT_PUBLIC_APP_URL') })
+  const appUrl = Deno.env.get('TIPSHIFT_PUBLIC_APP_URL')?.trim() || requiredEnvironment('TIPSHIFT_ALLOWED_ORIGIN')
+  const turn = await buildAdminTurnRequest(payload, { appUrl })
   const { data: authorized, error: authorizationError } = await principal.service.rpc('tipshift_admin_authorized', {
     p_admin_user_id: principal.userId,
     p_venue_ref: turn.rpcArgs.p_venue_ref,
