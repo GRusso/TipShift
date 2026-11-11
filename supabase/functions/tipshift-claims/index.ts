@@ -38,7 +38,8 @@ function bytea(bytes: Uint8Array) {
 
 function corsFor(request: Request): Record<string, string> | null {
   const origin = request.headers.get('origin')
-  const allowed = requiredEnvironment('TIPSHIFT_ALLOWED_ORIGINS').split(',').map((value) => value.trim()).filter(Boolean)
+  const configured = Deno.env.get('TIPSHIFT_ALLOWED_ORIGINS')?.trim() || requiredEnvironment('TIPSHIFT_ALLOWED_ORIGIN')
+  const allowed = configured.split(',').map((value) => value.trim()).filter(Boolean)
   if (origin && !allowed.includes(origin)) return null
   return origin ? {
     'access-control-allow-origin': origin,
@@ -167,6 +168,14 @@ async function handleAdminCreateTurn(request: Request, payload: Record<string, u
   return { status: 201, payload: { turnRef, claimLinks: turn.claimLinks } }
 }
 
+async function handleAdminScopes(request: Request) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_scopes', { p_admin_user_id: principal.userId })
+  if (error || !Array.isArray(data)) return { status: 503, payload: { error: 'admin_unavailable' } }
+  return { status: 200, payload: { scopes: data } }
+}
+
 Deno.serve(async (request) => {
   let cors: Record<string, string>
   try {
@@ -180,6 +189,10 @@ Deno.serve(async (request) => {
   try {
     const payload = await body(request) as Record<string, unknown>
     const action = requiredText(payload.action, 'action', 32)
+    if (action === 'admin_scopes') {
+      const result = await handleAdminScopes(request)
+      return json(result.payload, result.status, cors)
+    }
     if (action === 'admin_create_turn') {
       const result = await handleAdminCreateTurn(request, payload)
       return json(result.payload, result.status, cors)
