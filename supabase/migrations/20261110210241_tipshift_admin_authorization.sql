@@ -1,0 +1,6 @@
+create table tipshift_private.admin_authorizations (admin_user_id uuid primary key references auth.users(id) on delete cascade, venue_ref uuid not null, branch_ref uuid, role text not null check(role in ('organization_admin','branch_admin')), created_at timestamptz not null default timezone('utc',now()), check((role='organization_admin' and branch_ref is null) or (role='branch_admin' and branch_ref is not null)));
+alter table tipshift_private.admin_authorizations enable row level security;
+revoke all on tipshift_private.admin_authorizations from public,anon,authenticated;
+create or replace function public.tipshift_admin_authorized(p_admin_user_id uuid,p_venue_ref uuid,p_branch_ref uuid) returns boolean language sql set search_path=pg_catalog,tipshift_private as $$ select exists(select 1 from tipshift_private.admin_authorizations a where a.admin_user_id=p_admin_user_id and a.venue_ref=p_venue_ref and (a.role='organization_admin' or (a.role='branch_admin' and a.branch_ref=p_branch_ref))); $$;
+revoke all on function public.tipshift_admin_authorized(uuid,uuid,uuid) from public,anon,authenticated;
+grant execute on function public.tipshift_admin_authorized(uuid,uuid,uuid) to service_role;

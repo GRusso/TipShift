@@ -1,0 +1,1 @@
+alter table tipshift_private.turns add constraint turns_started_timestamp_matches_state check(started_at is null or state in ('collecting','disputed','settled','closed')), add constraint turns_closed_timestamp_matches_state check((state='closed')=(closed_at is not null));

@@ -60,10 +60,20 @@ wallet in two places of one shift while permitting that wallet in a future
 shift. The wallet-bearing roster is internal-only output for contract
 provisioning and must never be returned from an admin or public endpoint.
 
-The repository does **not** yet contain an HTTP adapter, durable data store,
-or browser-to-server NEP-413 proof test for this core. An adapter must verify
-both the NEP-413 signature and that its public key belongs to the claimed
-NEAR account before calling `completeClaim`.
+The repository contains the server-side Supabase Edge Function adapter and
+versioned private-schema migrations under `supabase/`. The adapter verifies
+an opaque one-time capability, the NEP-413 signature, and that the signing
+public key is a full-access key of the claimed NEAR account before storing an
+encrypted wallet reference. Browser-to-server wallet proof and a live
+end-to-end claim remain unverified until separately exercised on testnet.
+
+## Private persistence
+
+The `tipshift_private` schema stores anonymous turn slots, group weights,
+capability hashes, encrypted wallet references, and aggregate tallies. It is
+not exposed to browser roles and has RLS enabled without browser policies.
+Never add a migration directly to the already linked project to “recover” it:
+the historical migrations in this repository mirror its applied history.
 
 ## Important boundaries
 
