@@ -6,6 +6,7 @@ type Recipient = { groupRef: string; recipientSlot: number; shareWeight: number 
 type ClaimLink = { recipientSlot: number; url: string }
 type AdminScope = { venue_ref: string; branch_ref: string | null; branch_label: string | null; role: 'organization_admin' | 'branch_admin' }
 
+const PERCENT_SCALE = 10_000
 const uuid = () => crypto.randomUUID()
 const tomorrow = () => {
   const value = new Date(Date.now() + 24 * 60 * 60 * 1000)
@@ -23,6 +24,20 @@ function updateAt<T>(items: T[], index: number, value: T) {
   return items.map((item, current) => current === index ? value : item)
 }
 
+function equalizeGroup(recipients: Recipient[], groupRef: string) {
+  const slots = recipients.filter((recipient) => recipient.groupRef === groupRef)
+  if (!slots.length) return recipients
+  const base = Math.floor(PERCENT_SCALE / slots.length)
+  const remainder = PERCENT_SCALE % slots.length
+  let position = 0
+  return recipients.map((recipient) => {
+    if (recipient.groupRef !== groupRef) return recipient
+    const shareWeight = base + (position < remainder ? 1 : 0)
+    position += 1
+    return { ...recipient, shareWeight }
+  })
+}
+
 export function AdminTurnCreator() {
   const client = useMemo(configuredClient, [])
   const [session, setSession] = useState<Session | null>(null)
@@ -32,7 +47,8 @@ export function AdminTurnCreator() {
   const [newBranchLabel, setNewBranchLabel] = useState('')
   const [claimWindowEndsAt, setClaimWindowEndsAt] = useState(tomorrow)
   const [groups, setGroups] = useState<Group[]>([{ groupRef: uuid(), shareBps: 10_000 }])
-  const [recipients, setRecipients] = useState<Recipient[]>([{ groupRef: groups[0].groupRef, recipientSlot: 1, shareWeight: 1 }])
+  const [recipients, setRecipients] = useState<Recipient[]>([{ groupRef: groups[0].groupRef, recipientSlot: 1, shareWeight: PERCENT_SCALE }])
+  const [equalSplitGroups, setEqualSplitGroups] = useState<Record<string, boolean>>({})
   const [claimLinks, setClaimLinks] = useState<ClaimLink[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -126,10 +142,34 @@ export function AdminTurnCreator() {
     await refreshScopes()
   }
 
+  const isEqualSplit = (groupRef: string) => equalSplitGroups[groupRef] !== false
+  const setEqualSplit = (groupRef: string, enabled: boolean) => {
+    setEqualSplitGroups((current) => ({ ...current, [groupRef]: enabled }))
+    if (enabled) setRecipients((current) => equalizeGroup(current, groupRef))
+  }
+  const removeRecipient = (index: number) => {
+    const groupRef = recipients[index]?.groupRef
+    const next = recipients.filter((_, current) => current !== index)
+    setRecipients(groupRef && isEqualSplit(groupRef) ? equalizeGroup(next, groupRef) : next)
+  }
+  const moveRecipient = (index: number, groupRef: string) => {
+    const previousGroupRef = recipients[index]?.groupRef
+    let next = updateAt(recipients, index, { ...recipients[index], groupRef })
+    if (previousGroupRef && isEqualSplit(previousGroupRef)) next = equalizeGroup(next, previousGroupRef)
+    if (isEqualSplit(groupRef)) next = equalizeGroup(next, groupRef)
+    setRecipients(next)
+  }
+  const addRecipient = () => {
+    const groupRef = groups[0]?.groupRef ?? ''
+    const next = [...recipients, { groupRef, recipientSlot: Math.max(...recipients.map((recipient) => recipient.recipientSlot)) + 1, shareWeight: 1 }]
+    setRecipients(isEqualSplit(groupRef) ? equalizeGroup(next, groupRef) : next)
+  }
+
   if (!client) return <main className="private-admin"><section><p className="eyebrow">TIPSHIFT · PRIVATE ADMIN</p><h1>Configuration required</h1><p>This screen needs the public Supabase URL and anonymous key. It never accepts service-role credentials or recipient wallets.</p></section></main>
   if (!session) return <main className="private-admin"><section><p className="eyebrow">TIPSHIFT · PRIVATE ADMIN</p><h1>Private shift access</h1><p>Only an authorized ClariaLabs session can create anonymous recipient slots and private claim links.</p><label>Work email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" /></label><button className="primary" disabled={busy || !email} onClick={() => void sendMagicLink()}>Send sign-in link</button>{message && <p className="admin-message">{message}</p>}</section></main>
 
   const shareTotal = groups.reduce((total, group) => total + Number(group.shareBps), 0)
+  const recipientPercentagesValid = groups.every((group) => recipients.filter((recipient) => recipient.groupRef === group.groupRef).reduce((total, recipient) => total + Number(recipient.shareWeight), 0) === PERCENT_SCALE)
   const branchScopes = scopes.filter((scope): scope is AdminScope & { branch_ref: string; branch_label: string } => Boolean(scope.branch_ref && scope.branch_label))
   const canRegisterBranch = scopes.some((scope) => scope.role === 'organization_admin')
   return <main className="private-admin"><section>
@@ -137,12 +177,14 @@ export function AdminTurnCreator() {
     <p>Admins define anonymous slots, groups and shares. Recipient wallets are never requested, shown or editable here.</p>
     {branchScopes.length > 0 ? <div className="admin-grid"><label>Authorized branch<select value={selectedBranchRef} onChange={(event) => setSelectedBranchRef(event.target.value)}>{branchScopes.map((scope) => <option key={scope.branch_ref} value={scope.branch_ref}>{scope.branch_label}</option>)}</select></label><label>Private claim window<input value={claimWindowEndsAt} onChange={(event) => setClaimWindowEndsAt(event.target.value)} type="datetime-local" /></label></div> : <div className="admin-grid"><p className="admin-message">No active branch is registered for this private organization.</p>{canRegisterBranch && <><label>New branch commercial label<input value={newBranchLabel} onChange={(event) => setNewBranchLabel(event.target.value)} maxLength={80} placeholder="Downtown café" /></label><button className="secondary" disabled={busy || !newBranchLabel.trim()} onClick={() => void registerBranch()}>Register branch</button></>}</div>}
     <h2>Groups · {shareTotal / 100}% allocated</h2>
-    {groups.map((group, index) => <div className="admin-row" key={group.groupRef}><code>{group.groupRef}</code><label>Basis points<input type="number" min="1" max="10000" value={group.shareBps} onChange={(event) => setGroups(updateAt(groups, index, { ...group, shareBps: Number(event.target.value) }))} /></label><button className="secondary" disabled={groups.length === 1} onClick={() => { setGroups(groups.filter((_, item) => item !== index)); setRecipients(recipients.filter((recipient) => recipient.groupRef !== group.groupRef)) }}>Remove</button></div>)}
-    <button className="secondary" disabled={groups.length >= 20} onClick={() => setGroups([...groups, { groupRef: uuid(), shareBps: 1 }])}>Add group</button>
+    {groups.map((group, index) => <div className="admin-row" key={group.groupRef}><code>{group.groupRef}</code><label>Percentage of shift<input type="number" min="0.01" max="100" step="0.01" value={group.shareBps / 100} onChange={(event) => setGroups(updateAt(groups, index, { ...group, shareBps: Math.round(Number(event.target.value) * 100) }))} /></label><label><input type="checkbox" checked={isEqualSplit(group.groupRef)} onChange={(event) => setEqualSplit(group.groupRef, event.target.checked)} /> All recipients share this group equally</label><button className="secondary" disabled={groups.length === 1} onClick={() => { setGroups(groups.filter((_, item) => item !== index)); setRecipients(recipients.filter((recipient) => recipient.groupRef !== group.groupRef)); setEqualSplitGroups((current) => ({ ...current, [group.groupRef]: false })) }}>Remove</button></div>)}
+    <button className="secondary" disabled={groups.length >= 20} onClick={() => { const groupRef = uuid(); setGroups([...groups, { groupRef, shareBps: 1 }]); setRecipients([...recipients, { groupRef, recipientSlot: Math.max(...recipients.map((recipient) => recipient.recipientSlot)) + 1, shareWeight: PERCENT_SCALE }]) }}>Add group</button>
     <h2>Anonymous recipient slots</h2>
-    {recipients.map((recipient, index) => <div className="admin-row" key={`${recipient.groupRef}-${recipient.recipientSlot}`}><label>Slot<input type="number" min="1" max="10000" value={recipient.recipientSlot} onChange={(event) => setRecipients(updateAt(recipients, index, { ...recipient, recipientSlot: Number(event.target.value) }))} /></label><label>Group<select value={recipient.groupRef} onChange={(event) => setRecipients(updateAt(recipients, index, { ...recipient, groupRef: event.target.value }))}>{groups.map((group) => <option key={group.groupRef} value={group.groupRef}>{group.groupRef}</option>)}</select></label><label>Weight<input type="number" min="1" value={recipient.shareWeight} onChange={(event) => setRecipients(updateAt(recipients, index, { ...recipient, shareWeight: Number(event.target.value) }))} /></label><button className="secondary" disabled={recipients.length === 1} onClick={() => setRecipients(recipients.filter((_, item) => item !== index))}>Remove</button></div>)}
-    <button className="secondary" disabled={recipients.length >= 100} onClick={() => setRecipients([...recipients, { groupRef: groups[0]?.groupRef ?? '', recipientSlot: Math.max(...recipients.map((recipient) => recipient.recipientSlot)) + 1, shareWeight: 1 }])}>Add anonymous slot</button>
-    <div className="actions"><button className="primary" disabled={busy || shareTotal !== 10_000 || !selectedBranchRef} onClick={() => void createTurn()}>Create shift and private links</button></div>
+    <p>Each recipient receives a percentage inside their group. Each group must total 100%.</p>
+    {recipients.map((recipient, index) => <div className="admin-row" key={`${recipient.groupRef}-${recipient.recipientSlot}`}><label>Slot<input type="number" min="1" max="10000" value={recipient.recipientSlot} onChange={(event) => setRecipients(updateAt(recipients, index, { ...recipient, recipientSlot: Number(event.target.value) }))} /></label><label>Group<select value={recipient.groupRef} onChange={(event) => moveRecipient(index, event.target.value)}>{groups.map((group) => <option key={group.groupRef} value={group.groupRef}>{group.groupRef}</option>)}</select></label><label>Percentage within group<input type="number" min="0.01" max="100" step="0.01" disabled={isEqualSplit(recipient.groupRef)} value={recipient.shareWeight / 100} onChange={(event) => setRecipients(updateAt(recipients, index, { ...recipient, shareWeight: Math.round(Number(event.target.value) * 100) }))} /></label><button className="secondary" disabled={recipients.length === 1} onClick={() => removeRecipient(index)}>Remove</button></div>)}
+    <button className="secondary" disabled={recipients.length >= 100} onClick={addRecipient}>Add anonymous slot</button>
+    {!recipientPercentagesValid && <p className="admin-message">Each group must allocate exactly 100% among its recipient slots.</p>}
+    <div className="actions"><button className="primary" disabled={busy || shareTotal !== PERCENT_SCALE || !recipientPercentagesValid || !selectedBranchRef} onClick={() => void createTurn()}>Create shift and private links</button></div>
     {message && <p className="admin-message">{message}</p>}
     {claimLinks.length > 0 && <div className="claim-links"><h2>Private recipient links</h2><p>Distribute each link privately. The fragment token is never written to the server database.</p>{claimLinks.map((link) => <article key={link.recipientSlot}><strong>Anonymous slot {link.recipientSlot}</strong><a href={link.url}>{link.url}</a></article>)}</div>}
   </section></main>
