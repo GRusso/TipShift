@@ -26,7 +26,7 @@ async function hashHex(value) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-function expiration(value, now) {
+function timestamp(value, now) {
   if (typeof value !== 'string') invalid()
   const parsed = new Date(value)
   if (!Number.isFinite(parsed.getTime()) || parsed <= now || parsed.getTime() > now.getTime() + 31 * 24 * 60 * 60 * 1000) invalid()
@@ -45,7 +45,12 @@ export async function buildAdminTurnRequest(input, { appUrl, now = new Date(), r
   if (!input || typeof input !== 'object' || !appUrl) invalid()
   const venueRef = uuid(input.venueRef)
   const branchRef = uuid(input.branchRef)
-  const claimWindowEndsAt = expiration(input.claimWindowEndsAt, now)
+  const hasSchedule = input.scheduledStartsAt !== undefined || input.scheduledEndsAt !== undefined
+  if (hasSchedule && (input.scheduledStartsAt === undefined || input.scheduledEndsAt === undefined)) invalid()
+  const scheduledStartsAt = hasSchedule ? timestamp(input.scheduledStartsAt, now) : null
+  const scheduledEndsAt = hasSchedule ? timestamp(input.scheduledEndsAt, now) : null
+  const claimWindowEndsAt = hasSchedule ? scheduledStartsAt : timestamp(input.claimWindowEndsAt, now)
+  if (scheduledStartsAt && scheduledEndsAt && (new Date(scheduledEndsAt) <= new Date(scheduledStartsAt) || new Date(scheduledEndsAt).getTime() > new Date(scheduledStartsAt).getTime() + 24 * 60 * 60 * 1000)) invalid()
   if (!Array.isArray(input.groups) || input.groups.length < 1 || input.groups.length > 20) invalid()
   if (!Array.isArray(input.recipients) || input.recipients.length < 1 || input.recipients.length > 100) invalid()
 
@@ -92,7 +97,15 @@ export async function buildAdminTurnRequest(input, { appUrl, now = new Date(), r
   }
 
   return {
-    rpcArgs: {
+    rpcArgs: hasSchedule ? {
+      p_venue_ref: venueRef,
+      p_branch_ref: branchRef,
+      p_claim_window_ends_at: claimWindowEndsAt,
+      p_scheduled_starts_at: scheduledStartsAt,
+      p_scheduled_ends_at: scheduledEndsAt,
+      p_groups: groups,
+      p_claims: claims,
+    } : {
       p_venue_ref: venueRef,
       p_branch_ref: branchRef,
       p_claim_window_ends_at: claimWindowEndsAt,

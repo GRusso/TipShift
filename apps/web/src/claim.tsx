@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Buffer } from 'buffer'
 import { useEffect, useMemo, useState } from 'react'
 import { connectTestnetWallet } from './near'
+import { openPrivateManifest, type PrivateTurnManifest } from './private-manifest'
 
 type Claim = {
   turnRef: string
@@ -31,6 +32,7 @@ export function RecipientClaim() {
   const client = useMemo(configuredClient, [])
   const [token] = useState(fragmentToken)
   const [claim, setClaim] = useState<Claim | null>(null)
+  const [manifest, setManifest] = useState<PrivateTurnManifest | null>(null)
   const [message, setMessage] = useState('Loading your private recipient assignment…')
   const [busy, setBusy] = useState(false)
   const [complete, setComplete] = useState(false)
@@ -44,6 +46,15 @@ export function RecipientClaim() {
       setMessage('Review the assignment, then connect your permanent public NEAR wallet.')
     })
   }, [client, token])
+
+  useEffect(() => { void openPrivateManifest().then(setManifest) }, [])
+
+  useEffect(() => {
+    if (!token) return
+    const safeUrl = new URL(window.location.href)
+    safeUrl.hash = ''
+    window.history.replaceState(null, '', safeUrl)
+  }, [token])
 
   const signAndClaim = async () => {
     if (!client || !token || !claim) return
@@ -77,5 +88,6 @@ export function RecipientClaim() {
 
   if (!client) return <main className="private-admin"><section><p className="eyebrow">TIPSHIFT · PRIVATE RECIPIENT</p><h1>Configuration required</h1><p>This private claim screen requires only the public Supabase URL and publishable key. It never accepts a seed phrase or private key.</p></section></main>
   if (!token) return <main className="private-admin"><section><p className="eyebrow">TIPSHIFT · PRIVATE RECIPIENT</p><h1>Private link required</h1><p>Use the one-time private link delivered by your shift administrator.</p></section></main>
-  return <main className="private-admin"><section><p className="eyebrow">TIPSHIFT · PRIVATE RECIPIENT</p><h1>Claim this tip assignment</h1><p>Only this assignment is shown. No employee name, email, or co-worker wallet is requested or revealed.</p>{claim && <div className="rows"><article><b>{String(claim.recipientSlot).padStart(2, '0')}</b><span><strong>Tip recipient assignment</strong><small>Private shift recipient</small></span><em>{claim.groupShareBps / 100}% group share</em></article></div>}<p className="admin-message" role="status">{message}</p>{claim && !complete && <div className="actions"><button className="primary" disabled={busy} onClick={() => void signAndClaim()}>{busy ? 'Verifying…' : 'Connect NEAR wallet and sign'}</button></div>}{complete && <p className="checklist">✓ Wallet verified for this shift</p>}</section></main>
+  const scheduled = manifest ? `${new Date(manifest.startsAt).toLocaleString()} – ${new Date(manifest.endsAt).toLocaleString()}` : null
+  return <main className="private-admin"><section><p className="eyebrow">TIPSHIFT · PRIVATE RECIPIENT</p><h1>Claim this tip assignment</h1><p>No employee name, email, or co-worker wallet is requested or revealed.</p>{manifest && <div className="private-manifest"><h2>Shift allocation overview</h2><p><strong>Scheduled shift:</strong> {scheduled}</p><p>Each listed recipient sees the same allocation overview. Wallet ownership remains private.</p><div className="rows">{manifest.groups.map((group, groupIndex) => <article key={`${manifest.revision}-${groupIndex}`}><b>{String(groupIndex + 1).padStart(2, '0')}</b><span><strong>{group.label || `Group ${groupIndex + 1}`}</strong><small>{manifest.recipients.filter((recipient) => recipient.groupIndex === groupIndex).map((recipient) => `${recipient.alias || 'Private slot'} ${recipient.shareBps / 100}%`).join(' · ')}</small></span><em>{group.shareBps / 100}% of tips</em></article>)}</div></div>}{claim && <div className="rows"><article><b>{String(claim.recipientSlot).padStart(2, '0')}</b><span><strong>Your recipient assignment</strong><small>Private shift recipient</small></span><em>{claim.groupShareBps / 100}% group share</em></article></div>}<p className="admin-message" role="status">{message}</p>{claim && !complete && <div className="actions"><button className="primary" disabled={busy} onClick={() => void signAndClaim()}>{busy ? 'Verifying…' : 'Connect NEAR wallet and sign'}</button></div>}{complete && <p className="checklist">✓ Wallet verified for this shift</p>}</section></main>
 }
