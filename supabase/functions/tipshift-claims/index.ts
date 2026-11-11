@@ -50,7 +50,7 @@ function corsFor(request: Request): Record<string, string> | null {
   if (origin && !allowed.includes(origin)) return null
   return origin ? {
     'access-control-allow-origin': origin,
-    'access-control-allow-headers': 'authorization, content-type',
+    'access-control-allow-headers': 'authorization, apikey, content-type, x-client-info',
     'access-control-allow-methods': 'POST, OPTIONS',
     'vary': 'Origin',
   } : {}

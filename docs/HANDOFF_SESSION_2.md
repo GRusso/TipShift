@@ -31,17 +31,13 @@ Hackathon presentation: **2026-11-14**. Testnet only. No secrets in this file.
 - Admin authorization row exists: organization_admin, venue
   `d867f096-c65b-4ddd-ac42-055a67cb3ac4`. Branches table: 0 rows.
 
-## OPEN ISSUE (start here)
-`http://127.0.0.1:5173/?admin=1` still shows "No active branch is registered" and
-"Your private branch access could not be loaded" after the CORS fix and a hard
-refresh. Magic-link login works. Next steps:
-1. Browser devtools -> Network -> the `tipshift-claims` call: status + body.
-2. Confirm the page is served from this repo with `.env.local` loaded (two Vite
-   servers ran: 5173 older, 5174 newer; both cwd = this repo). Restart `pnpm dev`
-   so Vite reads `.env.local`, then sign in again.
-3. If the function returns an error, check the `tipshift_admin_scopes` RPC and the
-   JWT audience/claims in `authenticatedAdmin` (`supabase/functions/tipshift-claims/index.ts`).
-4. Once scopes load, register branch "Goodmorning Coffee – Centro" from the UI.
+## Resolved: admin page could not load branch scopes
+Root cause: the Edge Function preflight allowed only `authorization, content-type`,
+but supabase-js always sends `apikey` and `x-client-info`, so the browser blocked
+the call (nothing reached the function). Fixed in `index.ts` and redeployed
+(`tipshift-claims`). Also: the old Vite servers had died; restart `pnpm dev`
+after creating `.env.local`. Verify next: reload `/?admin=1`, scopes should load,
+then register "Goodmorning Coffee – Centro" from the UI.
 
 ## Next steps
 1. Fix the open issue; register the branch; create a scheduled turn + private QR links.
