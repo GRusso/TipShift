@@ -67,7 +67,7 @@ export async function readDemoPool() {
   return viewCall<PoolSummary | null>(VAULT_ACCOUNT_ID, 'get_pool', { pool_id: DEMO_POOL_ID })
 }
 
-export async function connectTestnetWallet(params: { contractId: string; methodNames: string[] }) {
+export async function connectTestnetWallet(params: { contractId?: string; methodNames?: string[] } = {}) {
   const activeSelector = await selector()
   const wallet = await activeSelector.wallet()
   if (!activeSelector.isSignedIn()) await wallet.signIn(params as never)

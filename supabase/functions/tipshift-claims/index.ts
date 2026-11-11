@@ -139,7 +139,13 @@ async function handleClaim(action: string, payload: Record<string, unknown>) {
   if (action === 'start') {
     const nonce = crypto.getRandomValues(new Uint8Array(32))
     const { data, error } = await service.rpc('tipshift_claim_start', { p_capability_hash: capabilityHash, p_challenge_nonce: bytea(nonce) })
-    return error || !data ? null : { claim: data, nonce: base64url(nonce) }
+    return error || !data ? null : {
+      claim: data,
+      nonce: base64url(nonce),
+      // NEP-413 recipient/message are public signing context, not secrets.
+      message: statement(data),
+      recipient: requiredEnvironment('TIPSHIFT_NEP413_RECIPIENT'),
+    }
   }
   if (action === 'complete') {
     const accountId = requiredText(payload.accountId, 'accountId', 128)
