@@ -5,6 +5,7 @@ import { buildAdminTurnRequest } from './admin-turn-request.mjs'
 
 const encoder = new TextEncoder()
 const MAX_BODY_BYTES = 4_096
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function requiredEnvironment(name: string) {
   const value = Deno.env.get(name)?.trim()
@@ -15,6 +16,12 @@ function requiredEnvironment(name: string) {
 function requiredText(value: unknown, field: string, maximum = 512) {
   if (typeof value !== 'string' || !value.trim() || value.length > maximum) throw new TypeError(`Invalid ${field}.`)
   return value.trim()
+}
+
+function requiredUuid(value: unknown, field: string) {
+  const uuid = requiredText(value, field, 36)
+  if (!UUID.test(uuid)) throw new TypeError(`Invalid ${field}.`)
+  return uuid
 }
 
 function base64(value: unknown, field: string, urlSafe = false) {
@@ -180,6 +187,21 @@ async function handleAdminScopes(request: Request) {
   return { status: 200, payload: { scopes: data } }
 }
 
+async function handleAdminRegisterBranch(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const venueRef = requiredUuid(payload.venueRef, 'venueRef')
+  const branchLabel = requiredText(payload.branchLabel, 'branchLabel', 80)
+  if (/[\u0000-\u001f\u007f]/.test(branchLabel)) return { status: 400, payload: { error: 'branch_invalid' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_register_branch', {
+    p_admin_user_id: principal.userId,
+    p_venue_ref: venueRef,
+    p_branch_label: branchLabel,
+  })
+  if (error || !Array.isArray(data) || data.length !== 1) return { status: 409, payload: { error: 'branch_unavailable' } }
+  return { status: 201, payload: { branch: data[0] } }
+}
+
 Deno.serve(async (request) => {
   let cors: Record<string, string>
   try {
@@ -195,6 +217,10 @@ Deno.serve(async (request) => {
     const action = requiredText(payload.action, 'action', 32)
     if (action === 'admin_scopes') {
       const result = await handleAdminScopes(request)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_register_branch') {
+      const result = await handleAdminRegisterBranch(request, payload)
       return json(result.payload, result.status, cors)
     }
     if (action === 'admin_create_turn') {
