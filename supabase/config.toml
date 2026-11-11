@@ -1,0 +1,4 @@
+[functions.tipshift-claims]
+# Recipient claims use an opaque, one-use capability and NEP-413 proof. The
+# handler performs the stricter per-action check for the admin-only route.
+verify_jwt = false
