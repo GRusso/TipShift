@@ -30,23 +30,37 @@ async function gunzip(value: Uint8Array) {
   return new Uint8Array(await new Response(stream).arrayBuffer())
 }
 
+const ALIAS = /^[\p{L}\p{N}]{0,3}$/u
+
+function invalid(reason: string): never {
+  throw new TypeError(`Invalid private manifest: ${reason}`)
+}
+
 function assertManifest(value: unknown): asserts value is PrivateTurnManifest {
   const manifest = value as Partial<PrivateTurnManifest>
   const startsAt = new Date(String(manifest?.startsAt ?? ''))
   const endsAt = new Date(String(manifest?.endsAt ?? ''))
-  if (!manifest || manifest.version !== 1 || typeof manifest.revision !== 'string' || !UUID.test(manifest.revision) || !Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) || endsAt <= startsAt || endsAt.getTime() > startsAt.getTime() + 24 * 60 * 60 * 1000 || !Array.isArray(manifest.groups) || !Array.isArray(manifest.recipients) || manifest.groups.length < 1 || manifest.groups.length > 20 || manifest.recipients.length < 1 || manifest.recipients.length > 100) throw new TypeError('Invalid private manifest.')
+  if (!manifest || manifest.version !== 1 || typeof manifest.revision !== 'string' || !UUID.test(manifest.revision)) invalid('unsupported format')
+  if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime())) invalid('the shift start or end is not a valid date')
+  if (endsAt <= startsAt) invalid('the shift must end after it starts')
+  if (endsAt.getTime() > startsAt.getTime() + 24 * 60 * 60 * 1000) invalid('the shift cannot last more than 24 hours')
+  if (!Array.isArray(manifest.groups) || manifest.groups.length < 1 || manifest.groups.length > 20) invalid('use between 1 and 20 groups')
+  if (!Array.isArray(manifest.recipients) || manifest.recipients.length < 1 || manifest.recipients.length > 100) invalid('use between 1 and 100 recipient slots')
   let groupTotal = 0
   for (const group of manifest.groups) {
-    if (!group || typeof group.label !== 'string' || group.label.length > 48 || !Number.isInteger(group.shareBps) || group.shareBps < 1 || group.shareBps > 10_000) throw new TypeError('Invalid private manifest.')
+    if (!group || typeof group.label !== 'string' || group.label.length > 48) invalid('a group name is longer than 48 characters')
+    if (!Number.isInteger(group.shareBps) || group.shareBps < 1 || group.shareBps > 10_000) invalid('a group percentage must be between 0.01% and 100%')
     groupTotal += group.shareBps
   }
-  if (groupTotal !== 10_000) throw new TypeError('Invalid private manifest.')
+  if (groupTotal !== 10_000) invalid('the groups must add up to exactly 100%')
   const recipientTotals = Array.from({ length: manifest.groups.length }, () => 0)
   for (const recipient of manifest.recipients) {
-    if (!recipient || typeof recipient.alias !== 'string' || !/^[A-Z0-9]{0,3}$/.test(recipient.alias) || !Number.isInteger(recipient.groupIndex) || recipient.groupIndex < 0 || recipient.groupIndex >= manifest.groups.length || !Number.isInteger(recipient.shareBps) || recipient.shareBps < 1 || recipient.shareBps > 10_000) throw new TypeError('Invalid private manifest.')
+    if (!recipient || typeof recipient.alias !== 'string' || !ALIAS.test(recipient.alias)) invalid('an alias must be at most 3 letters or numbers (no spaces or symbols)')
+    if (!Number.isInteger(recipient.groupIndex) || recipient.groupIndex < 0 || recipient.groupIndex >= manifest.groups.length) invalid('a recipient slot points to a group that no longer exists')
+    if (!Number.isInteger(recipient.shareBps) || recipient.shareBps < 1 || recipient.shareBps > 10_000) invalid('a recipient percentage must be between 0.01% and 100%')
     recipientTotals[recipient.groupIndex] += recipient.shareBps
   }
-  if (recipientTotals.some((total) => total !== 10_000)) throw new TypeError('Invalid private manifest.')
+  if (recipientTotals.some((total) => total !== 10_000)) invalid('each group must give its recipients exactly 100% in total')
 }
 
 export function buildPrivateTurnManifest(input: { startsAt: string; endsAt: string; groups: Array<{ groupRef: string; shareBps: number }>; recipients: Array<{ groupRef: string; recipientSlot: number; shareWeight: number }>; groupLabels: Record<string, string>; recipientLabels: Record<string, string> }): PrivateTurnManifest {
@@ -60,7 +74,7 @@ export function buildPrivateTurnManifest(input: { startsAt: string; endsAt: stri
     endsAt: input.endsAt,
     groups: input.groups.map((group, index) => ({ label: (input.groupLabels[group.groupRef] ?? `Group ${index + 1}`).trim().slice(0, 48), shareBps: group.shareBps })),
     recipients: input.recipients.map((recipient) => ({
-      alias: (input.recipientLabels[String(recipient.recipientSlot)] ?? '').trim().toUpperCase(),
+      alias: (input.recipientLabels[String(recipient.recipientSlot)] ?? '').trim().toLocaleUpperCase(),
       groupIndex: groupIndex.get(recipient.groupRef) ?? -1,
       shareBps: recipient.shareWeight,
     })),

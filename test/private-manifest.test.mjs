@@ -34,3 +34,20 @@ test('rejects a tampered private manifest without affecting the claim capability
   assert.equal(await openPrivateManifest(hash), null)
   assert.match(hash, /claim=opaque-capability/)
 })
+
+test('accepts accented and uppercase-folded aliases', async () => {
+  const manifest = buildPrivateTurnManifest({ startsAt: '2026-11-12T12:00:00.000Z', endsAt: '2026-11-12T20:00:00.000Z', groups: [groups[0], { ...groups[1], shareBps: 4_000 }], recipients, groupLabels: {}, recipientLabels: { 1: 'ñu', 2: 'Ál1', 3: 'ab' } })
+  assert.deepEqual(manifest.recipients.map((recipient) => recipient.alias), ['ÑU', 'ÁL1', 'AB'])
+  assert.deepEqual(await openPrivateManifest(new URL(attachPrivateManifest('https://tipshift.example/#claim=t', await sealPrivateManifest(manifest))).hash), manifest)
+})
+
+test('names the rule that was broken instead of a generic error', () => {
+  const base = { startsAt: '2026-11-12T12:00:00.000Z', endsAt: '2026-11-12T20:00:00.000Z', groups, recipients, groupLabels: {}, recipientLabels: {} }
+  assert.throws(() => buildPrivateTurnManifest({ ...base, recipientLabels: { 1: 'A B' } }), /alias must be at most 3 letters or numbers/)
+  assert.throws(() => buildPrivateTurnManifest({ ...base, recipientLabels: { 1: 'A.' } }), /alias must be at most 3 letters or numbers/)
+  assert.throws(() => buildPrivateTurnManifest({ ...base, endsAt: '2026-11-13T13:00:00.000Z' }), /more than 24 hours/)
+  assert.throws(() => buildPrivateTurnManifest({ ...base, endsAt: '2026-11-12T11:00:00.000Z' }), /end after it starts/)
+  assert.throws(() => buildPrivateTurnManifest({ ...base, groups: [groups[0]] }), /add up to exactly 100%/)
+  assert.throws(() => buildPrivateTurnManifest({ ...base, recipients: [recipients[0], recipients[2]] }), /exactly 100% in total/)
+  assert.throws(() => buildPrivateTurnManifest({ ...base, recipients: [{ ...recipients[0], groupRef: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }, ...recipients.slice(1)] }), /group that no longer exists/)
+})

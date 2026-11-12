@@ -211,8 +211,9 @@ export function AdminTurnCreator() {
         groupLabels: labels.groups,
         recipientLabels: labels.recipients,
       }))
-    } catch {
-      setMessage('The private QR manifest is too large or invalid. Shorten group labels or reduce anonymous slots.')
+    } catch (error) {
+      const reason = error instanceof Error ? error.message.replace(/^Invalid private manifest: /, '') : ''
+      setMessage(error instanceof RangeError ? 'The private QR manifest is too large. Shorten group names or reduce anonymous slots.' : `The shift cannot be created: ${reason || 'check the groups, aliases and percentages'}.`)
       return
     }
     setBusy(true); setMessage(null); setClaimLinks([]); setClaimQrs({}); setTurnRef(null); setTurnStatus(null)
