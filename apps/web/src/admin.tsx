@@ -80,7 +80,14 @@ export function AdminTurnCreator() {
     const { data, error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_scopes' } })
     const next = data as { scopes?: AdminScope[] } | null
     if (error || !next || !Array.isArray(next.scopes)) {
-      setMessage('Your private branch access could not be loaded.')
+      // Non-sensitive diagnostic only: error class and the function's error code.
+      let detail = error?.name ?? 'unexpected_response'
+      const response = (error as { context?: unknown } | null)?.context
+      if (response instanceof Response) {
+        const body = await response.clone().json().catch(() => null) as { error?: string } | null
+        detail = `${response.status} ${body?.error ?? ''}`.trim()
+      }
+      setMessage(`Your private branch access could not be loaded (${detail}).`)
       return
     }
     const authorizedScopes = next.scopes

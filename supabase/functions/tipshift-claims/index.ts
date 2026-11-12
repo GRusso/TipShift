@@ -116,9 +116,9 @@ function clients() {
 async function authenticatedAdmin(request: Request) {
   const token = authorizationToken(request)
   if (!token) return null
-  const { anonymousKey, service, url } = clients()
-  const userClient = createClient(url, anonymousKey, { global: { headers: { authorization: `Bearer ${token}` } }, auth: { persistSession: false, autoRefreshToken: false } })
-  const { data, error } = await userClient.auth.getUser()
+  const { service } = clients()
+  // Validate the caller's JWT against the Auth server via the service client.
+  const { data, error } = await service.auth.getUser(token)
   if (error || !data.user?.id) return null
   return { service, userId: data.user.id }
 }
