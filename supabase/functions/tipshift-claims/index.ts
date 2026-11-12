@@ -222,7 +222,16 @@ async function handleAdminInviteManager(request: Request, payload: Record<string
     p_email: email,
   })
   if (error || !Array.isArray(data) || data.length !== 1) return { status: 409, payload: { error: 'invitation_unavailable' } }
-  return { status: 201, payload: { invitation: data[0] } }
+  // Sign-ups are closed on this instance, so the invitation itself must create the manager's
+  // Auth user and send the e-mail. Supabase enforces its redirect allow-list on redirectTo.
+  // An already-registered manager simply signs in with a magic link.
+  let emailSent = false
+  const origin = request.headers.get('origin')
+  if (origin) {
+    const { error: inviteError } = await principal.service.auth.admin.inviteUserByEmail(email, { redirectTo: `${origin}/?admin=1` })
+    emailSent = !inviteError
+  }
+  return { status: 201, payload: { invitation: data[0], emailSent } }
 }
 
 async function handleAdminRevokeManager(request: Request, payload: Record<string, unknown>) {
