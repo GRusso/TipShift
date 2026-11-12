@@ -1,5 +1,7 @@
 # TipShift — handoff, session 2 (2026-11-11)
 
+> **Superseded by `docs/HANDOFF_SESSION_3.md`.**
+
 Hackathon presentation: **2026-11-14**. Testnet only. No secrets in this file.
 
 ## Decisions taken
