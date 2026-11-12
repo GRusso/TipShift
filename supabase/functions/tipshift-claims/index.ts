@@ -207,16 +207,35 @@ async function handleAdminScopes(request: Request) {
   return { status: 200, payload: { scopes: data } }
 }
 
+async function handleAdminSetOrganization(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const venueRef = requiredUuid(payload.venueRef, 'venueRef')
+  const organizationName = requiredText(payload.organizationName, 'organizationName', 80)
+  if (/[\u0000-\u001f\u007f]/.test(organizationName)) return { status: 400, payload: { error: 'organization_invalid' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_set_organization', {
+    p_admin_user_id: principal.userId,
+    p_venue_ref: venueRef,
+    p_organization_name: organizationName,
+  })
+  if (error || !Array.isArray(data) || data.length !== 1) return { status: 409, payload: { error: 'organization_unavailable' } }
+  return { status: 200, payload: { organization: data[0] } }
+}
+
 async function handleAdminRegisterBranch(request: Request, payload: Record<string, unknown>) {
   const principal = await authenticatedAdmin(request)
   if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
   const venueRef = requiredUuid(payload.venueRef, 'venueRef')
   const branchLabel = requiredText(payload.branchLabel, 'branchLabel', 80)
   if (/[\u0000-\u001f\u007f]/.test(branchLabel)) return { status: 400, payload: { error: 'branch_invalid' } }
+  // The address is optional: absent, null or blank all mean "no address".
+  const rawAddress = typeof payload.branchAddress === 'string' ? payload.branchAddress.trim() : ''
+  if (rawAddress.length > 160 || /[\u0000-\u001f\u007f]/.test(rawAddress)) return { status: 400, payload: { error: 'branch_invalid' } }
   const { data, error } = await principal.service.rpc('tipshift_admin_register_branch', {
     p_admin_user_id: principal.userId,
     p_venue_ref: venueRef,
     p_branch_label: branchLabel,
+    p_branch_address: rawAddress || null,
   })
   if (error || !Array.isArray(data) || data.length !== 1) return { status: 409, payload: { error: 'branch_unavailable' } }
   return { status: 201, payload: { branch: data[0] } }
@@ -237,6 +256,10 @@ Deno.serve(async (request) => {
     const action = requiredText(payload.action, 'action', 32)
     if (action === 'admin_scopes') {
       const result = await handleAdminScopes(request)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_set_organization') {
+      const result = await handleAdminSetOrganization(request, payload)
       return json(result.payload, result.status, cors)
     }
     if (action === 'admin_register_branch') {

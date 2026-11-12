@@ -8,7 +8,7 @@ type Group = { groupRef: string; shareBps: number }
 type Recipient = { groupRef: string; recipientSlot: number; shareWeight: number }
 type ClaimLink = { recipientSlot: number; url: string }
 type TurnStatus = { turnRef: string; state: 'claiming' | 'collecting'; recipientCount: number; verifiedCount: number; scheduledStartsAt: string; scheduledEndsAt: string }
-type AdminScope = { venue_ref: string; branch_ref: string | null; branch_label: string | null; role: 'organization_admin' | 'branch_admin' }
+type AdminScope = { venue_ref: string; organization_name: string | null; branch_ref: string | null; branch_label: string | null; branch_address: string | null; role: 'organization_admin' | 'branch_admin' }
 
 const PERCENT_SCALE = 10_000
 const uuid = () => crypto.randomUUID()
@@ -50,6 +50,8 @@ export function AdminTurnCreator() {
   const [scopes, setScopes] = useState<AdminScope[]>([])
   const [selectedBranchRef, setSelectedBranchRef] = useState('')
   const [newBranchLabel, setNewBranchLabel] = useState('')
+  const [newBranchAddress, setNewBranchAddress] = useState('')
+  const [organizationNameInput, setOrganizationNameInput] = useState('')
   const [scheduledStartsAt, setScheduledStartsAt] = useState(nextShiftStart)
   const [scheduledEndsAt, setScheduledEndsAt] = useState(nextShiftEnd)
   const [groups, setGroups] = useState<Group[]>([{ groupRef: uuid(), shareBps: 10_000 }])
@@ -181,6 +183,24 @@ export function AdminTurnCreator() {
     await refreshTurnStatus(); setMessage('Shift started. Groups and recipients are now locked.')
   }
 
+  const saveOrganization = async () => {
+    if (!client || !session) return
+    const organization = scopes.find((scope) => scope.role === 'organization_admin')
+    if (!organization) {
+      setMessage('Only an organization administrator can name the organization.')
+      return
+    }
+    setBusy(true); setMessage(null)
+    const { error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_set_organization', venueRef: organization.venue_ref, organizationName: organizationNameInput } })
+    setBusy(false)
+    if (error) {
+      setMessage('The organization name was not saved. Use 1 to 80 characters and try again.')
+      return
+    }
+    setOrganizationNameInput('')
+    await refreshScopes()
+  }
+
   const registerBranch = async () => {
     if (!client || !session) return
     const organization = scopes.find((scope) => scope.role === 'organization_admin')
@@ -189,13 +209,14 @@ export function AdminTurnCreator() {
       return
     }
     setBusy(true); setMessage(null)
-    const { error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_register_branch', venueRef: organization.venue_ref, branchLabel: newBranchLabel } })
+    const { error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_register_branch', venueRef: organization.venue_ref, branchLabel: newBranchLabel, branchAddress: newBranchAddress } })
     setBusy(false)
     if (error) {
-      setMessage('Branch was not registered. Use a unique commercial label and try again.')
+      setMessage('Branch was not registered. Name the organization first and use a unique branch name.')
       return
     }
     setNewBranchLabel('')
+    setNewBranchAddress('')
     await refreshScopes()
   }
 
@@ -231,12 +252,27 @@ export function AdminTurnCreator() {
   const recipientPercentagesValid = groups.every((group) => recipients.filter((recipient) => recipient.groupRef === group.groupRef).reduce((total, recipient) => total + Number(recipient.shareWeight), 0) === PERCENT_SCALE)
   const branchScopes = scopes.filter((scope): scope is AdminScope & { branch_ref: string; branch_label: string } => Boolean(scope.branch_ref && scope.branch_label))
   const canRegisterBranch = scopes.some((scope) => scope.role === 'organization_admin')
+  const organizationName = scopes.find((scope) => scope.role === 'organization_admin')?.organization_name ?? null
   const configLocked = Boolean(turnRef)
   return <main className="private-admin"><section>
     <header><div><p className="eyebrow">TIPSHIFT · PRIVATE ADMIN</p><h1>Create a private shift</h1></div><button className="secondary" onClick={() => void client.auth.signOut()}>Sign out</button></header>
     <p>Admins define anonymous slots, groups and shares. Recipient wallets are never requested, shown or editable here.</p>
     {branchScopes.length > 0 ? <div className="admin-grid"><label>Authorized branch<select disabled={configLocked} value={selectedBranchRef} onChange={(event) => setSelectedBranchRef(event.target.value)}>{branchScopes.map((scope) => <option key={scope.branch_ref} value={scope.branch_ref}>{scope.branch_label}</option>)}</select></label><label>Shift starts<input disabled={configLocked} value={scheduledStartsAt} onChange={(event) => setScheduledStartsAt(event.target.value)} type="datetime-local" /></label><label>Shift ends<input disabled={configLocked} value={scheduledEndsAt} onChange={(event) => setScheduledEndsAt(event.target.value)} type="datetime-local" /></label></div> : <div className="admin-grid"><p className="admin-message">No active branch is registered for this private organization.</p></div>}
-    {canRegisterBranch && <div className="admin-grid"><p className="admin-message">Organization branches: {branchScopes.length ? branchScopes.map((scope) => scope.branch_label).join(' · ') : 'none yet'}</p><label>Add a branch<input disabled={configLocked} value={newBranchLabel} onChange={(event) => setNewBranchLabel(event.target.value)} maxLength={80} placeholder="Downtown café" /></label><button className="secondary" disabled={busy || configLocked || !newBranchLabel.trim()} onClick={() => void registerBranch()}>Register branch</button></div>}
+    {canRegisterBranch && <>
+      <h2>Organization{organizationName ? ` · ${organizationName}` : ''}</h2>
+      <div className="admin-grid">
+        <label>Organization name<input disabled={configLocked} value={organizationNameInput} onChange={(event) => setOrganizationNameInput(event.target.value)} maxLength={80} placeholder={organizationName ?? 'Good Morning Coffee'} /></label>
+        <button className="secondary" disabled={busy || configLocked || !organizationNameInput.trim() || organizationNameInput.trim() === organizationName} onClick={() => void saveOrganization()}>{organizationName ? 'Rename organization' : 'Save organization'}</button>
+      </div>
+      {!organizationName && <p className="admin-message">Name the organization first. Branches are registered under it.</p>}
+      <h2>Branches</h2>
+      <p className="admin-message">{branchScopes.length ? branchScopes.map((scope) => scope.branch_address ? `${scope.branch_label} (${scope.branch_address})` : scope.branch_label).join(' · ') : 'No branches yet.'}</p>
+      <div className="admin-grid">
+        <label>Branch name<input disabled={configLocked || !organizationName} value={newBranchLabel} onChange={(event) => setNewBranchLabel(event.target.value)} maxLength={80} placeholder="Downtown" /></label>
+        <label>Address (optional)<input disabled={configLocked || !organizationName} value={newBranchAddress} onChange={(event) => setNewBranchAddress(event.target.value)} maxLength={160} placeholder="123 Main St" /></label>
+        <button className="secondary" disabled={busy || configLocked || !organizationName || !newBranchLabel.trim()} onClick={() => void registerBranch()}>Register branch</button>
+      </div>
+    </>}
     <p className="admin-message">Recipient claims close when the shift starts. Tip collection can start only within the scheduled shift window.</p>
     <h2>Groups · {shareTotal / 100}% allocated</h2>
     {groups.map((group, index) => <div className="admin-row" key={group.groupRef}><label>Group name<input disabled={configLocked} value={labels.groups[group.groupRef] ?? ''} maxLength={48} placeholder="Waitstaff" onChange={(event) => setGroupLabel(group.groupRef, event.target.value)} /></label><label>Percentage of shift<input disabled={configLocked} type="number" min="0.01" max="100" step="0.01" value={group.shareBps / 100} onChange={(event) => setGroups(updateAt(groups, index, { ...group, shareBps: Math.round(Number(event.target.value) * 100) }))} /></label><label><input disabled={configLocked} type="checkbox" checked={isEqualSplit(group.groupRef)} onChange={(event) => setEqualSplit(group.groupRef, event.target.checked)} /> All recipients share this group equally</label><button className="secondary" disabled={configLocked || groups.length === 1} onClick={() => { setGroups(groups.filter((_, item) => item !== index)); setRecipients(recipients.filter((recipient) => recipient.groupRef !== group.groupRef)); setEqualSplitGroups((current) => ({ ...current, [group.groupRef]: false })) }}>Remove</button></div>)}
