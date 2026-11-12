@@ -2,7 +2,8 @@ import type { Session } from '@supabase/supabase-js'
 import { useCallback, useEffect, useState } from 'react'
 import { toDataURL } from 'qrcode'
 import { splitShiftTips } from '../../../../../src/core/group-split.mjs'
-import { DEMO_ADMIN_ID, connectTestnetWallet, openPaymentSession, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
+import { downloadCsv } from '../csv'
+import { DEMO_ADMIN_ID, connectTestnetWallet, explorerTransaction, openPaymentSession, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
 import { adminClient, previousAuthEvent, signInLinkError, AUTH_EVENT_KEY } from '../../admin'
 import { useCopy } from '../i18n'
 import { ConsoleShell, PublicFrame, type NavItem } from '../layout'
@@ -61,6 +62,7 @@ const copy = {
     updated: 'List updated.', regLead: 'Employees register once per location with their own wallet. You see only initials.', issue: 'Create registration link', replace: 'Replace registration link', issued: 'New registration link created. The previous one no longer works.', issueFail: 'The registration link could not be created.',
     registered: 'Registered employees', nobody: 'Nobody has registered yet.', registeredOn: 'Registered',
     working: 'Working…',
+    download: 'Download CSV', deleteReport: 'Delete', confirmDelete: 'Delete this report? The final distribution stays on-chain.', deleteFail: 'The report could not be deleted.', retention: 'Reports are deleted automatically 30 days after the shift. The final distribution stays on-chain.', onchain: 'Distribution on-chain ↗',
     tipsLead: 'One public QR for customers. Each QR is an exact, one-time payment session for the pool of the active shift.', poolState: 'Pool status', poolBalance: 'Pool balance', connectAdmin: 'Connect branch wallet', notAdmin: 'This wallet is not the configured branch administrator.', tipAmount: 'Tip amount (test USDC)', openSession: 'Open payment session and create QR', sessionOpened: 'Payment session opened. Show this QR to the customer.', waitingPool: 'The presentation pool is not active yet.', customerQr: 'Customer payment QR', customerHint: 'It only contains an opaque reference: no pool, wallets or percentages.', connectedAs: 'Connected',
     reportLead: 'Proposed split of the shift tips, computed from who checked in. A group with nobody present weighs 0; inside a group everyone gets the same.', noReport: 'No active shifts to report yet.', group: 'Group', present: 'Present', groupAmount: 'Group amount', each: 'Each', total: 'Total to distribute', balanceNote: 'Balance of the demonstration pool (testnet).', person: 'Person', amount: 'Amount', nobody2: 'Nobody checked in', splitTitle: 'Distribution proposal',
   },
@@ -87,6 +89,7 @@ const copy = {
     updated: 'Lista actualizada.', regLead: 'Los empleados se registran una vez por local con su propia wallet. Vos ves solo las iniciales.', issue: 'Crear link de registro', replace: 'Reemplazar link de registro', issued: 'Nuevo link de registro creado. El anterior ya no funciona.', issueFail: 'No se pudo crear el link de registro.',
     registered: 'Empleados registrados', nobody: 'Todavía no se registró nadie.', registeredOn: 'Registrado',
     working: 'Procesando…',
+    download: 'Descargar CSV', deleteReport: 'Eliminar', confirmDelete: '¿Eliminar este reporte? La distribución final queda en la blockchain.', deleteFail: 'No se pudo eliminar el reporte.', retention: 'Los reportes se eliminan solos 30 días después del turno. La distribución final queda en la blockchain.', onchain: 'Distribución en la blockchain ↗',
     tipsLead: 'Un QR público para clientes. Cada QR es una sesión de pago exacta y de un solo uso para el pool del turno activo.', poolState: 'Estado del pool', poolBalance: 'Saldo del pool', connectAdmin: 'Conectar wallet del local', notAdmin: 'Esta wallet no es la administradora configurada del local.', tipAmount: 'Monto de la propina (USDC de prueba)', openSession: 'Abrir sesión de pago y crear QR', sessionOpened: 'Sesión de pago abierta. Mostrale este QR al cliente.', waitingPool: 'El pool de la presentación todavía no está activo.', customerQr: 'QR de pago del cliente', customerHint: 'Solo contiene una referencia opaca: ni pool, ni wallets, ni porcentajes.', connectedAs: 'Conectada',
     reportLead: 'Reparto propuesto de las propinas del turno según quién hizo check-in. Un grupo sin nadie presente pesa 0; dentro de un grupo todos reciben lo mismo.', noReport: 'Todavía no hay turnos activos para reportar.', group: 'Grupo', present: 'Presentes', groupAmount: 'Monto del grupo', each: 'Cada uno', total: 'Total a repartir', balanceNote: 'Saldo del pool de demostración (testnet).', person: 'Persona', amount: 'Monto', nobody2: 'Nadie hizo check-in', splitTitle: 'Propuesta de reparto',
   },
@@ -206,7 +209,7 @@ function Signed({ session }: { session: Session }) {
     {active === 'schedule' && (current ? <ScheduleTab branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'shift' && (current ? <ShiftTab branchLabel={current.branch_label} userId={session.user.id} venueRef={venueRef} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'tips' && (current ? <TipsTab branchLabel={current.branch_label} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
-    {active === 'report' && (current ? <ReportTab branchLabel={current.branch_label} userId={session.user.id} branchRef={branchRef} /> : <p className="ts-muted">{c.noScope}</p>)}
+    {active === 'report' && (current ? <ReportTab branchLabel={current.branch_label} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'employees' && (current ? <EmployeesTab userId={session.user.id} venueRef={venueRef} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
   </ConsoleShell>
 }
@@ -350,7 +353,7 @@ function ShiftTab({ branchLabel, userId, venueRef, branchRef, busy, setBusy, set
     setBusy(true); setNote(null)
     const r = await invoke<{ turnRef?: string; checkinLinks?: { groupRef: string; url: string }[] }>({
       action: 'admin_create_group_turn', venueRef, branchRef, scheduledStartsAt: start.toISOString(), scheduledEndsAt: end.toISOString(),
-      groups: groups.map((g) => ({ groupRef: g.groupRef, shareBps: g.shareBps, capacity: g.capacity })),
+      groups: groups.map((g) => ({ groupRef: g.groupRef, shareBps: g.shareBps, capacity: g.capacity, label: g.label.trim() })),
     })
     setBusy(false)
     if (!r?.turnRef || !r.checkinLinks) { setNote({ text: c.createFail, bad: true }); return }
@@ -508,42 +511,63 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
   </>
 }
 
-function ReportTab({ branchLabel, userId, branchRef }: { branchLabel: string; userId: string; branchRef: string }) {
+type ReportPerson = { employeeId: string; initials: string; signed: boolean }
+type ReportGroup = { groupRef: string; label: string | null; shareBps: number; capacity: number; people: ReportPerson[] }
+type Report = { turnRef: string; startsAt: string; endsAt: string; distributionTx: string | null; groups: ReportGroup[] }
+
+function ReportTab({ branchLabel, branchRef, busy, setBusy, setNote }: TabProps & { branchLabel: string; branchRef: string }) {
   const c = useCopy(copy)
   const [pool, setPool] = useState<PoolSummary | null | undefined>(undefined)
-  const [data, setData] = useState<{ shift: SavedShift; rows: Checkin[] }[]>([])
+  const [reports, setReports] = useState<Report[] | null>(null)
   const load = useCallback(async () => {
     readDemoPool().then(setPool).catch(() => setPool(null))
-    const out: { shift: SavedShift; rows: Checkin[] }[] = []
-    for (const shift of readShifts().filter((x) => x.userId === userId && x.branchRef === branchRef)) {
-      const r = await invoke<{ checkins?: Checkin[] }>({ action: 'admin_group_checkins', turnRef: shift.turnRef })
-      if (r?.checkins) out.push({ shift, rows: r.checkins })
-    }
-    setData(out)
-  }, [userId, branchRef])
+    const r = await invoke<{ reports?: Report[] }>({ action: 'admin_branch_reports', branchRef })
+    setReports(Array.isArray(r?.reports) ? r.reports : [])
+  }, [branchRef])
   useEffect(() => { void load() }, [load])
   const balance = pool ? BigInt(pool.balance) : 0n
   const hhmm = (v: string) => new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const split = (report: Report) => splitShiftTips({ balance, groups: report.groups.map((g) => ({ groupRef: g.groupRef, shareBps: g.shareBps, employeeIds: g.people.filter((p) => p.signed).map((p) => p.employeeId) })) })
+  const label = (g: ReportGroup, i: number) => g.label || `${c.group} ${i + 1}`
+
+  const download = (report: Report) => {
+    const result = split(report)
+    const rows: (string | number)[][] = [['location', 'shift_start', 'shift_end', 'group', 'initials', 'amount_usdc']]
+    report.groups.forEach((g, i) => {
+      const part = result.find((x) => x.groupRef === g.groupRef)
+      for (const person of part?.people ?? []) rows.push([branchLabel, report.startsAt, report.endsAt, label(g, i), g.people.find((p) => p.employeeId === person.employeeId)?.initials ?? '', (Number(person.amount) / 1_000_000).toFixed(6)])
+    })
+    downloadCsv(`tipshift-report-${report.startsAt.slice(0, 10)}.csv`, rows)
+  }
+  const remove = async (report: Report) => {
+    if (!window.confirm(c.confirmDelete)) return
+    setBusy(true); setNote(null)
+    const r = await invoke({ action: 'admin_delete_report', turnRef: report.turnRef })
+    setBusy(false)
+    if (!r) { setNote({ text: c.deleteFail, bad: true }); return }
+    await load()
+  }
   return <>
     <p className="ts-lead" style={{ fontSize: 14 }}>{c.reportLead}</p>
     <div className="ts-grid2" style={{ marginTop: 18 }}>
       <div className="ts-stat ts-card"><span>{c.total}</span><strong>{usdc(balance)}</strong><p className="ts-muted" style={{ fontSize: 11, marginTop: 6 }}>{c.balanceNote}</p></div>
       <div className="ts-stat ts-card"><span>{c.locations}</span><strong>{branchLabel}</strong></div>
     </div>
-    {data.length === 0 && <div className="ts-notice">{c.noReport}</div>}
-    {data.map(({ shift, rows }) => {
-      const groups = shift.groups.map((g) => ({ groupRef: g.groupRef, shareBps: g.shareBps ?? Math.floor(10_000 / shift.groups.length), employeeIds: rows.filter((r) => r.group_ref === g.groupRef && r.employee_id && r.signed).map((r) => r.employee_id!) }))
-      const result = splitShiftTips({ balance, groups })
-      return <div className="ts-card" key={shift.turnRef} style={{ marginTop: 16 }}>
-        <p className="ts-eyebrow">{c.splitTitle}</p>
-        <h3 style={{ fontSize: 20, margin: '0 0 4px' }}>{new Date(shift.startsAt).toLocaleDateString()} · {hhmm(shift.startsAt)}–{hhmm(shift.endsAt)}</h3>
-        <table className="ts-table"><thead><tr><th>{c.group}</th><th>{c.present}</th><th>{c.groupAmount}</th><th>{c.person}</th></tr></thead><tbody>
-          {result.map((g, i) => {
-            const label = shift.groups[i]?.label || `${c.group} ${i + 1}`
-            const people = rows.filter((r) => r.group_ref === g.groupRef && r.employee_id && r.signed)
-            return <tr key={g.groupRef}><td><strong>{label}</strong></td><td className="ts-mono">{people.length}</td><td className="ts-mono">{usdc(g.amount)}</td><td>{people.length === 0 ? <span className="ts-muted">{c.nobody2}</span> : g.people.map((p) => <span key={p.employeeId} style={{ display: 'inline-flex', gap: 8, marginRight: 14 }}><span className="ts-avatar" style={{ width: 'auto', padding: '0 8px' }}>{people.find((x) => x.employee_id === p.employeeId)?.initials}</span><span className="ts-mono">{usdc(p.amount)}</span></span>)}</td></tr>
+    <div className="ts-notice">{c.retention}</div>
+    {reports && reports.length === 0 && <div className="ts-notice">{c.noReport}</div>}
+    {(reports ?? []).map((report) => {
+      const result = split(report)
+      return <div className="ts-card" key={report.turnRef} style={{ marginTop: 16 }}>
+        <div className="ts-top" style={{ marginBottom: 6 }}><div><p className="ts-eyebrow">{c.splitTitle}</p><h3 style={{ fontSize: 20, margin: 0 }}>{new Date(report.startsAt).toLocaleDateString()} · {hhmm(report.startsAt)}–{hhmm(report.endsAt)}</h3></div>
+          <div className="ts-actions" style={{ marginTop: 0 }}><button className="ts-btn quiet small" onClick={() => download(report)}>{c.download}</button><button className="ts-btn danger small" disabled={busy} onClick={() => void remove(report)}>{c.deleteReport}</button></div></div>
+        <div style={{ overflowX: 'auto' }}><table className="ts-table"><thead><tr><th>{c.group}</th><th>{c.present}</th><th>{c.groupAmount}</th><th>{c.person}</th></tr></thead><tbody>
+          {report.groups.map((g, i) => {
+            const part = result.find((x) => x.groupRef === g.groupRef)
+            const present = g.people.filter((p) => p.signed)
+            return <tr key={g.groupRef}><td><strong>{label(g, i)}</strong></td><td className="ts-mono">{present.length}</td><td className="ts-mono">{usdc(part?.amount ?? 0n)}</td><td>{present.length === 0 ? <span className="ts-muted">{c.nobody2}</span> : (part?.people ?? []).map((p) => <span key={p.employeeId} style={{ display: 'inline-flex', gap: 8, marginRight: 14 }}><span className="ts-avatar" style={{ width: 'auto', padding: '0 8px' }}>{present.find((x) => x.employeeId === p.employeeId)?.initials}</span><span className="ts-mono">{usdc(p.amount)}</span></span>)}</td></tr>
           })}
-        </tbody></table>
+        </tbody></table></div>
+        {report.distributionTx && <p style={{ marginTop: 12 }}><a href={explorerTransaction(report.distributionTx)} target="_blank" rel="noreferrer">{c.onchain}</a></p>}
       </div>
     })}
     <div className="ts-actions"><button className="ts-btn quiet" onClick={() => void load()}>{c.refresh}</button></div>

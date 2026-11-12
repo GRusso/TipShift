@@ -451,6 +451,55 @@ async function handleAdminReservePlace(request: Request, payload: Record<string,
   return error || data !== true ? { status: 409, payload: { error: 'place_unavailable' } } : { status: 200, payload: { reserved: true } }
 }
 
+function reportStatement(purpose: string) {
+  return `TipShift shift report access (${purpose}). This signature proves control of this NEAR account; it moves no funds.`
+}
+
+// An employee proves wallet control with a one-time signature, then sees only the reports of the
+// shifts they were present for. The wallet is matched against every location's commitment.
+async function handleEmployeeReports(action: 'report_start' | 'report_list' | 'report_hide', payload: Record<string, unknown>) {
+  const { service } = clients()
+  const purpose = action === 'report_hide' ? `hide ${requiredUuid(payload.turnRef, 'turnRef')}` : 'list'
+  if (action === 'report_start') {
+    const nonce = crypto.getRandomValues(new Uint8Array(32))
+    const { error } = await service.rpc('tipshift_report_challenge_start', { p_nonce: bytea(nonce) })
+    return error ? null : { nonce: base64url(nonce), recipient: requiredEnvironment('TIPSHIFT_NEP413_RECIPIENT'), messageList: reportStatement('list') }
+  }
+  const accountId = requiredText(payload.accountId, 'accountId', 128)
+  const publicKey = requiredText(payload.publicKey, 'publicKey', 256)
+  const signature = base64(payload.signature, 'signature')
+  const nonce = base64(payload.nonce, 'nonce', true)
+  if (nonce.byteLength !== 32) return null
+  const provider = new JsonRpcProvider({ url: requiredEnvironment('TIPSHIFT_NEAR_RPC_URL') })
+  await assertFullAccess(provider, accountId, publicKey)
+  await verifyMessage({ signerAccountId: accountId, signerPublicKey: publicKey, payload: { message: reportStatement(purpose), nonce, recipient: requiredEnvironment('TIPSHIFT_NEP413_RECIPIENT') }, signature, provider })
+  const consumed = await service.rpc('tipshift_report_challenge_consume', { p_nonce: bytea(nonce) })
+  if (consumed.error || consumed.data !== true) return null
+  const branches = await service.rpc('tipshift_all_branch_refs')
+  if (branches.error || !Array.isArray(branches.data)) return null
+  const commitments = await Promise.all((branches.data as string[]).map(async (branchRef) => bytea(await walletCommitment(`branch:${branchRef}`, accountId))))
+  if (action === 'report_list') {
+    const { data, error } = await service.rpc('tipshift_employee_reports', { p_commitments: commitments })
+    return error ? null : { reports: data }
+  }
+  const { data, error } = await service.rpc('tipshift_employee_hide_report', { p_commitments: commitments, p_turn_ref: requiredUuid(payload.turnRef, 'turnRef') })
+  return error || data !== true ? null : { hidden: true }
+}
+
+async function handleAdminBranchReports(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_branch_reports', { p_admin_user_id: principal.userId, p_branch_ref: requiredUuid(payload.branchRef, 'branchRef') })
+  return error || !Array.isArray(data) ? { status: 403, payload: { error: 'reports_unavailable' } } : { status: 200, payload: { reports: data } }
+}
+
+async function handleAdminDeleteReport(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_delete_report', { p_admin_user_id: principal.userId, p_turn_ref: requiredUuid(payload.turnRef, 'turnRef') })
+  return error || data !== true ? { status: 409, payload: { error: 'report_unavailable' } } : { status: 200, payload: { deleted: true } }
+}
+
 Deno.serve(async (request) => {
   let cors: Record<string, string>
   try {
@@ -511,6 +560,18 @@ Deno.serve(async (request) => {
     if (action === 'checkin_start' || action === 'checkin_complete') {
       const result = await handleCheckin(action, payload)
       return result ? json(result, 200, cors) : json({ error: 'checkin_unavailable' }, 404, cors)
+    }
+    if (action === 'report_start' || action === 'report_list' || action === 'report_hide') {
+      const result = await handleEmployeeReports(action, payload)
+      return result ? json(result, 200, cors) : json({ error: 'reports_unavailable' }, 404, cors)
+    }
+    if (action === 'admin_branch_reports') {
+      const result = await handleAdminBranchReports(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_delete_report') {
+      const result = await handleAdminDeleteReport(request, payload)
+      return json(result.payload, result.status, cors)
     }
     if (action === 'admin_set_registration_link') {
       const result = await handleAdminSetRegistrationLink(request, payload)

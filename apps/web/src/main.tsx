@@ -9,6 +9,7 @@ import { useRoute } from './ui/router'
 import { CheckIn } from './ui/pages/CheckIn'
 import { EmployeeRegister } from './ui/pages/EmployeeRegister'
 import { Console } from './ui/pages/Console'
+import { MyShift } from './ui/pages/MyShift'
 import { Tip } from './ui/pages/Tip'
 import { Landing } from './ui/pages/Landing'
 import './styles.css'
@@ -28,6 +29,7 @@ function Root() {
     case 'console': return <Console />
     default:
       if (route.path === '/demo') return <App />
+      if (route.path === '/me') return <MyShift />
       if (route.path === '/company') return <Console />
       return <Landing />
   }

@@ -58,7 +58,9 @@ export async function buildAdminGroupTurnRequest(input, { appUrl, now = new Date
     const groupRef = uuid(group.groupRef)
     if (seen.has(groupRef)) invalid()
     seen.add(groupRef)
-    return { groupRef, shareBps: integerBetween(group.shareBps, 1, 10_000), capacity: integerBetween(group.capacity, 1, 100) }
+    // The group name is optional and only used to label reports; it is limited to 48 characters.
+    const label = typeof group.label === 'string' ? group.label.trim().slice(0, 48) : ''
+    return { groupRef, shareBps: integerBetween(group.shareBps, 1, 10_000), capacity: integerBetween(group.capacity, 1, 100), label }
   })
   if (groups.reduce((total, group) => total + group.shareBps, 0) !== 10_000) invalid()
 
@@ -81,7 +83,7 @@ export async function buildAdminGroupTurnRequest(input, { appUrl, now = new Date
       p_branch_ref: branchRef,
       p_scheduled_starts_at: scheduledStartsAt,
       p_scheduled_ends_at: scheduledEndsAt,
-      p_groups: groups.map(({ groupRef, shareBps }) => ({ groupRef, shareBps })),
+      p_groups: groups.map(({ groupRef, shareBps, label }) => (label ? { groupRef, shareBps, label } : { groupRef, shareBps })),
       p_links: links,
     },
     checkinLinks,

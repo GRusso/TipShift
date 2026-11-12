@@ -5,7 +5,7 @@ import { useCopy } from '../i18n'
 const copy = {
   en: {
     ribbon: 'TESTNET · Test funds only. No real payments are made.',
-    how: 'How it works', signIn: 'Manager sign-in', setUp: 'Set up a business',
+    how: 'How it works', signIn: 'Manager sign-in', mine: 'My shifts', setUp: 'Set up a business',
     eyebrow: 'TIP OPERATIONS FOR NEAR',
     title: 'Tips stay fair when the rules stay visible.',
     lead: 'TipShift helps a business share USDC tips by shift. Staff confirm they are present by scanning a QR and signing with their own wallet, and tips are split among the people who showed up, without TipShift ever holding their funds.',
@@ -30,7 +30,7 @@ const copy = {
   },
   es: {
     ribbon: 'TESTNET · Solo fondos de prueba. No se hacen pagos reales.',
-    how: 'Cómo funciona', signIn: 'Ingreso de gerentes', setUp: 'Registrar mi negocio',
+    how: 'Cómo funciona', signIn: 'Ingreso de gerentes', mine: 'Mis turnos', setUp: 'Registrar mi negocio',
     eyebrow: 'OPERACIÓN DE PROPINAS SOBRE NEAR',
     title: 'Las propinas son justas cuando las reglas son visibles.',
     lead: 'TipShift ayuda a un negocio a repartir propinas en USDC por turno. El equipo confirma que está presente escaneando un QR y firmando con su propia wallet, y la propina se reparte entre quienes se presentaron, sin que TipShift guarde nunca sus fondos.',
@@ -59,6 +59,7 @@ export function Landing() {
   const c = useCopy(copy)
   return <PublicFrame ribbon={c.ribbon} nav={<>
     <a href="#how">{c.how}</a>
+    <a href="#/me">{c.mine}</a>
     <a href="#/console" className="ts-chip">{c.signIn}</a>
   </>}>
     <section className="ts-hero">
