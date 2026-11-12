@@ -69,7 +69,8 @@ export async function readDemoPool() {
 
 export async function connectTestnetWallet(params: { contractId?: string; methodNames?: string[] } = {}) {
   const activeSelector = await selector()
-  const wallet = await activeSelector.wallet()
+  // Only one wallet module is installed, so name it: without a previous sign-in the selector has no wallet selected.
+  const wallet = await activeSelector.wallet('meteor-wallet')
   if (!activeSelector.isSignedIn()) await wallet.signIn(params as never)
   const accounts = await wallet.getAccounts()
   const accountId = accounts.at(0)?.accountId
