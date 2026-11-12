@@ -1,6 +1,8 @@
 import type { Session } from '@supabase/supabase-js'
 import { useCallback, useEffect, useState } from 'react'
 import { toDataURL } from 'qrcode'
+import { splitShiftTips } from '../../../../../src/core/group-split.mjs'
+import { DEMO_ADMIN_ID, connectTestnetWallet, openPaymentSession, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
 import { adminClient, previousAuthEvent, signInLinkError, AUTH_EVENT_KEY } from '../../admin'
 import { useCopy } from '../i18n'
 import { ConsoleShell, PublicFrame, type NavItem } from '../layout'
@@ -11,8 +13,9 @@ type Block = { weekday: number; startsAt: string; endsAt: string; label: string 
 type Employee = { employee_id: string; initials: string; created_at: string }
 type Group = { groupRef: string; label: string; shareBps: number; capacity: number }
 type Checkin = { group_ref: string; capacity: number; employee_id: string | null; initials: string | null; signed: boolean | null }
-type SavedShift = { userId: string; turnRef: string; branchRef: string; startsAt: string; endsAt: string; groups: { groupRef: string; label: string; url: string }[] }
-type Tab = 'company' | 'schedule' | 'shift' | 'employees'
+type SavedShift = { userId: string; turnRef: string; branchRef: string; startsAt: string; endsAt: string; groups: { groupRef: string; label: string; url: string; shareBps?: number }[] }
+type Tab = 'company' | 'schedule' | 'shift' | 'employees' | 'tips' | 'report'
+const TABS: Tab[] = ['company', 'schedule', 'shift', 'employees', 'tips', 'report']
 
 const SHIFTS_KEY = 'tipshift-group-shifts'
 const readShifts = (): SavedShift[] => {
@@ -37,7 +40,7 @@ const equalize = (groups: Group[]): Group[] => groups.map((g, i) => ({ ...g, sha
 const copy = {
   en: {
     ribbon: 'MANAGER CONSOLE · Testnet',
-    nav: { company: 'Company & locations', schedule: 'Weekly schedule', shift: 'Shifts & check-in', employees: 'Employees' },
+    nav: { company: 'Company & locations', schedule: 'Weekly schedule', shift: 'Shifts & check-in', employees: 'Employees', tips: 'Customer QR', report: 'Reports' },
     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     configTitle: 'Configuration required', configText: 'This screen needs the public Supabase URL and anonymous key.',
     signingIn: 'Checking your private session…',
@@ -58,10 +61,12 @@ const copy = {
     updated: 'List updated.', regLead: 'Employees register once per location with their own wallet. You see only initials.', issue: 'Create registration link', replace: 'Replace registration link', issued: 'New registration link created. The previous one no longer works.', issueFail: 'The registration link could not be created.',
     registered: 'Registered employees', nobody: 'Nobody has registered yet.', registeredOn: 'Registered',
     working: 'Working…',
+    tipsLead: 'One public QR for customers. Each QR is an exact, one-time payment session for the pool of the active shift.', poolState: 'Pool status', poolBalance: 'Pool balance', connectAdmin: 'Connect branch wallet', notAdmin: 'This wallet is not the configured branch administrator.', tipAmount: 'Tip amount (test USDC)', openSession: 'Open payment session and create QR', sessionOpened: 'Payment session opened. Show this QR to the customer.', waitingPool: 'The presentation pool is not active yet.', customerQr: 'Customer payment QR', customerHint: 'It only contains an opaque reference: no pool, wallets or percentages.', connectedAs: 'Connected',
+    reportLead: 'Proposed split of the shift tips, computed from who checked in. A group with nobody present weighs 0; inside a group everyone gets the same.', noReport: 'No active shifts to report yet.', group: 'Group', present: 'Present', groupAmount: 'Group amount', each: 'Each', total: 'Total to distribute', balanceNote: 'Balance of the demonstration pool (testnet).', person: 'Person', amount: 'Amount', nobody2: 'Nobody checked in', splitTitle: 'Distribution proposal',
   },
   es: {
     ribbon: 'CONSOLA DEL GERENTE · Testnet',
-    nav: { company: 'Empresa y locales', schedule: 'Horario semanal', shift: 'Turnos y check-in', employees: 'Empleados' },
+    nav: { company: 'Empresa y locales', schedule: 'Horario semanal', shift: 'Turnos y check-in', employees: 'Empleados', tips: 'QR del cliente', report: 'Reportes' },
     days: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
     configTitle: 'Falta configuración', configText: 'Esta pantalla necesita la URL pública de Supabase y la clave anónima.',
     signingIn: 'Verificando tu sesión privada…',
@@ -82,6 +87,8 @@ const copy = {
     updated: 'Lista actualizada.', regLead: 'Los empleados se registran una vez por local con su propia wallet. Vos ves solo las iniciales.', issue: 'Crear link de registro', replace: 'Reemplazar link de registro', issued: 'Nuevo link de registro creado. El anterior ya no funciona.', issueFail: 'No se pudo crear el link de registro.',
     registered: 'Empleados registrados', nobody: 'Todavía no se registró nadie.', registeredOn: 'Registrado',
     working: 'Procesando…',
+    tipsLead: 'Un QR público para clientes. Cada QR es una sesión de pago exacta y de un solo uso para el pool del turno activo.', poolState: 'Estado del pool', poolBalance: 'Saldo del pool', connectAdmin: 'Conectar wallet del local', notAdmin: 'Esta wallet no es la administradora configurada del local.', tipAmount: 'Monto de la propina (USDC de prueba)', openSession: 'Abrir sesión de pago y crear QR', sessionOpened: 'Sesión de pago abierta. Mostrale este QR al cliente.', waitingPool: 'El pool de la presentación todavía no está activo.', customerQr: 'QR de pago del cliente', customerHint: 'Solo contiene una referencia opaca: ni pool, ni wallets, ni porcentajes.', connectedAs: 'Conectada',
+    reportLead: 'Reparto propuesto de las propinas del turno según quién hizo check-in. Un grupo sin nadie presente pesa 0; dentro de un grupo todos reciben lo mismo.', noReport: 'Todavía no hay turnos activos para reportar.', group: 'Grupo', present: 'Presentes', groupAmount: 'Monto del grupo', each: 'Cada uno', total: 'Total a repartir', balanceNote: 'Saldo del pool de demostración (testnet).', person: 'Persona', amount: 'Monto', nobody2: 'Nadie hizo check-in', splitTitle: 'Propuesta de reparto',
   },
 }
 
@@ -152,12 +159,12 @@ function Signed({ session }: { session: Session }) {
   const client = adminClient!
   const [scopes, setScopes] = useState<Scope[]>([])
   const [branchRef, setBranchRef] = useState('')
-  const [tab, setTab] = useState<Tab>(() => (['company', 'schedule', 'shift', 'employees'] as Tab[]).find((t) => window.location.hash === `#/console/${t}`) ?? 'shift')
+  const [tab, setTab] = useState<Tab>(() => TABS.find((t) => window.location.hash === `#/console/${t}`) ?? 'shift')
   const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    const on = () => { const t = (['company', 'schedule', 'shift', 'employees'] as Tab[]).find((x) => window.location.hash === `#/console/${x}`); if (t) setTab(t) }
+    const on = () => { const t = TABS.find((x) => window.location.hash === `#/console/${x}`); if (t) setTab(t) }
     window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on)
   }, [])
 
@@ -180,10 +187,12 @@ function Signed({ session }: { session: Session }) {
     { id: 'schedule', label: c.nav.schedule, icon: '◷', href: '#/console/schedule' },
     { id: 'shift', label: c.nav.shift, icon: '◉', href: '#/console/shift' },
     { id: 'employees', label: c.nav.employees, icon: '☺', href: '#/console/employees' },
+    { id: 'tips', label: c.nav.tips, icon: '▦', href: '#/console/tips' },
+    { id: 'report', label: c.nav.report, icon: '≡', href: '#/console/report' },
   ]
   const active: Tab = tab === 'company' && !owner ? 'shift' : tab
   useEffect(() => { setNote(null) }, [active, branchRef])
-  const titles: Record<Tab, string> = { company: c.nav.company, schedule: c.nav.schedule, shift: c.nav.shift, employees: c.nav.employees }
+  const titles: Record<Tab, string> = c.nav
 
   return <ConsoleShell
     workspace={owner?.organization_name ?? 'TipShift'}
@@ -196,6 +205,8 @@ function Signed({ session }: { session: Session }) {
     {active === 'company' && owner && <CompanyTab owner={owner} branches={branches} busy={busy} setBusy={setBusy} setNote={setNote} reload={refreshScopes} onOpen={(ref) => { setBranchRef(ref); window.location.hash = '#/console/shift' }} />}
     {active === 'schedule' && (current ? <ScheduleTab branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'shift' && (current ? <ShiftTab branchLabel={current.branch_label} userId={session.user.id} venueRef={venueRef} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
+    {active === 'tips' && (current ? <TipsTab branchLabel={current.branch_label} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
+    {active === 'report' && (current ? <ReportTab branchLabel={current.branch_label} userId={session.user.id} branchRef={branchRef} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'employees' && (current ? <EmployeesTab userId={session.user.id} venueRef={venueRef} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
   </ConsoleShell>
 }
@@ -343,7 +354,7 @@ function ShiftTab({ branchLabel, userId, venueRef, branchRef, busy, setBusy, set
     })
     setBusy(false)
     if (!r?.turnRef || !r.checkinLinks) { setNote({ text: c.createFail, bad: true }); return }
-    const saved: SavedShift = { userId, turnRef: r.turnRef, branchRef, startsAt: start.toISOString(), endsAt: end.toISOString(), groups: r.checkinLinks.map((l) => ({ groupRef: l.groupRef, url: l.url, label: groups.find((g) => g.groupRef === l.groupRef)?.label.trim() || '' })) }
+    const saved: SavedShift = { userId, turnRef: r.turnRef, branchRef, startsAt: start.toISOString(), endsAt: end.toISOString(), groups: r.checkinLinks.map((l) => ({ groupRef: l.groupRef, url: l.url, label: groups.find((g) => g.groupRef === l.groupRef)?.label.trim() || '', shareBps: groups.find((g) => g.groupRef === l.groupRef)?.shareBps })) }
     const kept = [...readShifts().filter((x) => x.turnRef !== saved.turnRef), saved]
     writeShifts(kept); setShifts(kept); setNote({ text: c.created })
   }
@@ -440,5 +451,101 @@ function EmployeesTab({ userId, venueRef, branchRef, busy, setBusy, setNote }: T
     </div>
     <h2 className="ts-h3" style={{ marginTop: 24 }}>{c.registered} ({employees.length})</h2>
     {employees.length === 0 ? <p className="ts-muted">{c.nobody}</p> : <div className="ts-card"><div className="ts-rows">{employees.map((e) => <div className="ts-row" key={e.employee_id}><span className="ts-avatar">{e.initials}</span><span><strong>{e.initials}</strong><small>{c.registeredOn} {new Date(e.created_at).toLocaleDateString()}</small></span><span /></div>)}</div></div>}
+  </>
+}
+
+const usdc = (value: bigint) => `USDC ${(Number(value) / 1_000_000).toFixed(2)}`
+
+function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabProps['setNote'] }) {
+  const c = useCopy(copy)
+  const [pool, setPool] = useState<PoolSummary | null | undefined>(undefined)
+  const [account, setAccount] = useState<string | null>(null)
+  const [amount, setAmount] = useState('5')
+  const [qr, setQr] = useState<{ small: string; big: string; link: string } | null>(null)
+  const [zoom, setZoom] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(() => readDemoPool().then(setPool).catch(() => setPool(null)), [])
+  useEffect(() => { void load() }, [load])
+  const fail = (e: unknown) => setNote({ text: e instanceof Error ? e.message : String(e), bad: true })
+  const connect = async () => {
+    setBusy(true); setNote(null)
+    try {
+      const { accountId } = await connectTestnetWallet({ contractId: undefined, methodNames: ['open_payment_session'] })
+      if (accountId !== DEMO_ADMIN_ID) throw new Error(c.notAdmin)
+      setAccount(accountId)
+    } catch (e) { fail(e) } finally { setBusy(false) }
+  }
+  const open = async () => {
+    if (!account) return
+    setBusy(true); setNote(null)
+    try {
+      const ref = paymentRef()
+      await openPaymentSession({ accountId: account, paymentRef: ref, amount: toAtomicUsdc(amount) })
+      const link = `${window.location.origin}${window.location.pathname}?payment_ref=${ref}&amount=${encodeURIComponent(amount)}`
+      setQr({ link, small: await toDataURL(link, { width: 240, margin: 1 }), big: await toDataURL(link, { width: 720, margin: 2 }) })
+      setNote({ text: c.sessionOpened }); await load()
+    } catch (e) { fail(e) } finally { setBusy(false) }
+  }
+  return <>
+    <p className="ts-lead" style={{ fontSize: 14 }}>{c.tipsLead}</p>
+    <div className="ts-grid2" style={{ marginTop: 18 }}>
+      <div className="ts-stat ts-card"><span>{c.poolState}</span><strong>{pool ? pool.state : pool === null ? '—' : '…'}</strong></div>
+      <div className="ts-stat ts-card"><span>{c.poolBalance}</span><strong>{pool ? usdc(BigInt(pool.balance)) : '—'}</strong></div>
+    </div>
+    {pool === null && <div className="ts-notice bad">{c.waitingPool}</div>}
+    <div className="ts-card" style={{ marginTop: 16 }}>
+      {account ? <p className="ts-muted">{c.connectedAs}: <b className="ts-mono">{account}</b></p> : <div className="ts-actions" style={{ marginTop: 0 }}><button className="ts-btn quiet" disabled={busy} onClick={() => void connect()}>{c.connectAdmin}</button></div>}
+      <label className="ts-field">{c.tipAmount}<input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
+      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !account || pool?.state !== 'collecting'} onClick={() => void open()}>{c.openSession}</button></div>
+    </div>
+    {qr && <div className="ts-card" style={{ marginTop: 16, display: 'grid', justifyItems: 'center', textAlign: 'center' }}>
+      <p className="ts-eyebrow">{c.customerQr}</p>
+      <button type="button" className="ts-qr ts-qr-btn" aria-label={c.enlarge} onClick={() => setZoom(true)}><img src={qr.small} alt="QR" width={200} height={200} /></button>
+      <p className="ts-muted" style={{ marginTop: 12 }}>{c.customerHint}</p>
+      <a className="ts-muted" style={{ fontSize: 11, wordBreak: 'break-all' }} href={qr.link} target="_blank" rel="noreferrer">{qr.link}</a>
+    </div>}
+    {zoom && qr && <QrModal title={`USDC ${amount}`} sub={branchLabel} qr={qr.big} hint={c.customerHint} onClose={() => setZoom(false)} />}
+  </>
+}
+
+function ReportTab({ branchLabel, userId, branchRef }: { branchLabel: string; userId: string; branchRef: string }) {
+  const c = useCopy(copy)
+  const [pool, setPool] = useState<PoolSummary | null | undefined>(undefined)
+  const [data, setData] = useState<{ shift: SavedShift; rows: Checkin[] }[]>([])
+  const load = useCallback(async () => {
+    readDemoPool().then(setPool).catch(() => setPool(null))
+    const out: { shift: SavedShift; rows: Checkin[] }[] = []
+    for (const shift of readShifts().filter((x) => x.userId === userId && x.branchRef === branchRef)) {
+      const r = await invoke<{ checkins?: Checkin[] }>({ action: 'admin_group_checkins', turnRef: shift.turnRef })
+      if (r?.checkins) out.push({ shift, rows: r.checkins })
+    }
+    setData(out)
+  }, [userId, branchRef])
+  useEffect(() => { void load() }, [load])
+  const balance = pool ? BigInt(pool.balance) : 0n
+  const hhmm = (v: string) => new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return <>
+    <p className="ts-lead" style={{ fontSize: 14 }}>{c.reportLead}</p>
+    <div className="ts-grid2" style={{ marginTop: 18 }}>
+      <div className="ts-stat ts-card"><span>{c.total}</span><strong>{usdc(balance)}</strong><p className="ts-muted" style={{ fontSize: 11, marginTop: 6 }}>{c.balanceNote}</p></div>
+      <div className="ts-stat ts-card"><span>{c.locations}</span><strong>{branchLabel}</strong></div>
+    </div>
+    {data.length === 0 && <div className="ts-notice">{c.noReport}</div>}
+    {data.map(({ shift, rows }) => {
+      const groups = shift.groups.map((g) => ({ groupRef: g.groupRef, shareBps: g.shareBps ?? Math.floor(10_000 / shift.groups.length), employeeIds: rows.filter((r) => r.group_ref === g.groupRef && r.employee_id && r.signed).map((r) => r.employee_id!) }))
+      const result = splitShiftTips({ balance, groups })
+      return <div className="ts-card" key={shift.turnRef} style={{ marginTop: 16 }}>
+        <p className="ts-eyebrow">{c.splitTitle}</p>
+        <h3 style={{ fontSize: 20, margin: '0 0 4px' }}>{new Date(shift.startsAt).toLocaleDateString()} · {hhmm(shift.startsAt)}–{hhmm(shift.endsAt)}</h3>
+        <table className="ts-table"><thead><tr><th>{c.group}</th><th>{c.present}</th><th>{c.groupAmount}</th><th>{c.person}</th></tr></thead><tbody>
+          {result.map((g, i) => {
+            const label = shift.groups[i]?.label || `${c.group} ${i + 1}`
+            const people = rows.filter((r) => r.group_ref === g.groupRef && r.employee_id && r.signed)
+            return <tr key={g.groupRef}><td><strong>{label}</strong></td><td className="ts-mono">{people.length}</td><td className="ts-mono">{usdc(g.amount)}</td><td>{people.length === 0 ? <span className="ts-muted">{c.nobody2}</span> : g.people.map((p) => <span key={p.employeeId} style={{ display: 'inline-flex', gap: 8, marginRight: 14 }}><span className="ts-avatar" style={{ width: 'auto', padding: '0 8px' }}>{people.find((x) => x.employee_id === p.employeeId)?.initials}</span><span className="ts-mono">{usdc(p.amount)}</span></span>)}</td></tr>
+          })}
+        </tbody></table>
+      </div>
+    })}
+    <div className="ts-actions"><button className="ts-btn quiet" onClick={() => void load()}>{c.refresh}</button></div>
   </>
 }

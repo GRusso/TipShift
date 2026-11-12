@@ -1,0 +1,1 @@
+export function splitShiftTips(input: { balance: bigint; groups: { groupRef: string; shareBps: number; employeeIds: string[] }[] }): { groupRef: string; amount: bigint; people: { employeeId: string; amount: bigint }[] }[]

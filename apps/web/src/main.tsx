@@ -9,6 +9,7 @@ import { useRoute } from './ui/router'
 import { CheckIn } from './ui/pages/CheckIn'
 import { EmployeeRegister } from './ui/pages/EmployeeRegister'
 import { Console } from './ui/pages/Console'
+import { Tip } from './ui/pages/Tip'
 import { Landing } from './ui/pages/Landing'
 import './styles.css'
 import './theme.css'
@@ -22,6 +23,7 @@ function Root() {
   switch (route.page) {
     case 'register': return <EmployeeRegister token={route.token} />
     case 'checkin': return <CheckIn token={route.token} />
+    case 'tip': return <Tip paymentRef={route.paymentRef} amount={route.amount} />
     case 'claim': return <Legacy><RecipientClaim /></Legacy>
     case 'console': return <Console />
     default:

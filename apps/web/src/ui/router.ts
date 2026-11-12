@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 export type Route =
   | { page: 'register'; token: string }       // employee registration link  (#register=…)
   | { page: 'checkin'; token: string }        // group check-in QR           (#checkin=…)
+  | { page: 'tip'; paymentRef: string; amount: string } // customer payment QR (?payment_ref=…&amount=…)
   | { page: 'claim' }                         // legacy per-slot claim link  (#claim=…)
   | { page: 'console' }                       // signed-in company / local console (?admin=1 or #/console…)
   | { page: 'app'; path: string }             // everything else: #/path
@@ -17,6 +18,9 @@ export function resolveRoute(location: Location = window.location): Route {
   const checkin = fragment.get('checkin')
   if (checkin && TOKEN.test(checkin)) return { page: 'checkin', token: checkin }
   if (fragment.has('claim')) return { page: 'claim' }
+  const query = new URLSearchParams(location.search)
+  const paymentRef = query.get('payment_ref'); const amount = query.get('amount')
+  if (paymentRef && amount && /^ts-[a-f0-9]{32}$/.test(paymentRef) && /^\d+(\.\d{1,6})?$/.test(amount)) return { page: 'tip', paymentRef, amount }
   if (new URLSearchParams(location.search).get('admin') === '1') return { page: 'console' }
   const path = location.hash.startsWith('#/') ? location.hash.slice(1).split('?')[0] : '/'
   return path === '/console' || path.startsWith('/console/') ? { page: 'console' } : { page: 'app', path }
