@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { toDataURL } from 'qrcode'
 import { splitShiftTips } from '../../../../../src/core/group-split.mjs'
 import { downloadCsv } from '../csv'
-import { DEMO_ADMIN_ID, connectTestnetWallet, explorerTransaction, openPaymentSession, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
+import { DEMO_ADMIN_ID, closeAndDistributeDemo, savedDistributionTx, connectTestnetWallet, explorerTransaction, openPaymentSession, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
 import { adminClient, previousAuthEvent, signInLinkError, AUTH_EVENT_KEY } from '../../admin'
 import { useCopy } from '../i18n'
 import { ConsoleShell, PublicFrame, type NavItem } from '../layout'
@@ -63,7 +63,7 @@ const copy = {
     registered: 'Registered employees', nobody: 'Nobody has registered yet.', registeredOn: 'Registered',
     working: 'Working…',
     download: 'Download CSV', deleteReport: 'Delete', confirmDelete: 'Delete this report? The final distribution stays on-chain.', deleteFail: 'The report could not be deleted.', retention: 'Reports are deleted automatically 30 days after the shift. The final distribution stays on-chain.', onchain: 'Distribution on-chain ↗',
-    tipsLead: 'One public QR for customers. Each QR is an exact, one-time payment session for the pool of the active shift.', poolState: 'Pool status', poolBalance: 'Pool balance', connectAdmin: 'Connect branch wallet', notAdmin: 'This wallet is not the configured branch administrator.', tipAmount: 'Tip amount (test USDC)', openSession: 'Open payment session and create QR', sessionOpened: 'Payment session opened. Show this QR to the customer.', waitingPool: 'The presentation pool is not active yet.', customerQr: 'Customer payment QR', customerHint: 'It only contains an opaque reference: no pool, wallets or percentages.', connectedAs: 'Connected',
+    tipsLead: 'One public QR for customers. Each QR is an exact, one-time payment session for the pool of the active shift.', poolState: 'Pool status', poolBalance: 'Pool balance', connectAdmin: 'Connect branch wallet', notAdmin: 'This wallet is not the configured branch administrator.', tipAmount: 'Tip amount (test USDC)', openSession: 'Open payment session and create QR', sessionOpened: 'Payment session opened. Show this QR to the customer.', waitingPool: 'The presentation pool is not active yet.', customerQr: 'Customer payment QR', customerHint: 'It only contains an opaque reference: no pool, wallets or percentages.', connectedAs: 'Connected', closeTitle: 'Demo shift close', closeText: 'Closes collection, freezes the split and pays every employee on testnet. Your wallet signs two confirmations. It uses the demonstration pool, whose team is fixed, and it can only be done once.', closeBtn: 'Demo shift close and payout', closeConfirm: 'This closes the demonstration pool and pays out its balance. It cannot be repeated. Continue?', closing: 'Closing the shift…', paying: 'Paying employees…', confirming: 'Waiting for network confirmation…', closeDone: 'Shift closed and tips paid on-chain.', closeAgain: 'This pool was already distributed.', viewTx: 'View the on-chain distribution',
     reportLead: 'Proposed split of the shift tips, computed from who checked in. A group with nobody present weighs 0; inside a group everyone gets the same.', noReport: 'No active shifts to report yet.', group: 'Group', present: 'Present', groupAmount: 'Group amount', each: 'Each', total: 'Total to distribute', balanceNote: 'Balance of the demonstration pool (testnet).', person: 'Person', amount: 'Amount', nobody2: 'Nobody checked in', splitTitle: 'Distribution proposal',
   },
   es: {
@@ -90,7 +90,7 @@ const copy = {
     registered: 'Empleados registrados', nobody: 'Todavía no se registró nadie.', registeredOn: 'Registrado',
     working: 'Procesando…',
     download: 'Descargar CSV', deleteReport: 'Eliminar', confirmDelete: '¿Eliminar este reporte? La distribución final queda en la blockchain.', deleteFail: 'No se pudo eliminar el reporte.', retention: 'Los reportes se eliminan solos 30 días después del turno. La distribución final queda en la blockchain.', onchain: 'Distribución en la blockchain ↗',
-    tipsLead: 'Un QR público para clientes. Cada QR es una sesión de pago exacta y de un solo uso para el pool del turno activo.', poolState: 'Estado del pool', poolBalance: 'Saldo del pool', connectAdmin: 'Conectar wallet del local', notAdmin: 'Esta wallet no es la administradora configurada del local.', tipAmount: 'Monto de la propina (USDC de prueba)', openSession: 'Abrir sesión de pago y crear QR', sessionOpened: 'Sesión de pago abierta. Mostrale este QR al cliente.', waitingPool: 'El pool de la presentación todavía no está activo.', customerQr: 'QR de pago del cliente', customerHint: 'Solo contiene una referencia opaca: ni pool, ni wallets, ni porcentajes.', connectedAs: 'Conectada',
+    tipsLead: 'Un QR público para clientes. Cada QR es una sesión de pago exacta y de un solo uso para el pool del turno activo.', poolState: 'Estado del pool', poolBalance: 'Saldo del pool', connectAdmin: 'Conectar wallet del local', notAdmin: 'Esta wallet no es la administradora configurada del local.', tipAmount: 'Monto de la propina (USDC de prueba)', openSession: 'Abrir sesión de pago y crear QR', sessionOpened: 'Sesión de pago abierta. Mostrale este QR al cliente.', waitingPool: 'El pool de la presentación todavía no está activo.', customerQr: 'QR de pago del cliente', customerHint: 'Solo contiene una referencia opaca: ni pool, ni wallets, ni porcentajes.', connectedAs: 'Conectada', closeTitle: 'Demo cierre de turno', closeText: 'Cierra la recolección, congela el reparto y paga a cada empleado en testnet. Tu wallet firma dos confirmaciones. Usa el pool de demostración, cuyo equipo es fijo, y solo se puede hacer una vez.', closeBtn: 'Demo cierre de turno y pago', closeConfirm: 'Esto cierra el pool de demostración y paga su saldo. No se puede repetir. ¿Continuar?', closing: 'Cerrando el turno…', paying: 'Pagando a los empleados…', confirming: 'Esperando la confirmación de la red…', closeDone: 'Turno cerrado y propinas pagadas on-chain.', closeAgain: 'Este pool ya fue repartido.', viewTx: 'Ver la distribución on-chain',
     reportLead: 'Reparto propuesto de las propinas del turno según quién hizo check-in. Un grupo sin nadie presente pesa 0; dentro de un grupo todos reciben lo mismo.', noReport: 'Todavía no hay turnos activos para reportar.', group: 'Grupo', present: 'Presentes', groupAmount: 'Monto del grupo', each: 'Cada uno', total: 'Total a repartir', balanceNote: 'Saldo del pool de demostración (testnet).', person: 'Persona', amount: 'Monto', nobody2: 'Nadie hizo check-in', splitTitle: 'Propuesta de reparto',
   },
 }
@@ -467,6 +467,8 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
   const [qr, setQr] = useState<{ small: string; big: string; link: string } | null>(null)
   const [zoom, setZoom] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [step, setStep] = useState('')
+  const [distTx, setDistTx] = useState<string | null>(savedDistributionTx())
   const load = useCallback(() => readDemoPool().then(setPool).catch(() => setPool(null)), [])
   useEffect(() => { void load() }, [load])
   const fail = (e: unknown) => setNote({ text: e instanceof Error ? e.message : String(e), bad: true })
@@ -489,6 +491,18 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
       setNote({ text: c.sessionOpened }); await load()
     } catch (e) { fail(e) } finally { setBusy(false) }
   }
+  const closeShift = async () => {
+    if (!window.confirm(c.closeConfirm)) return
+    setBusy(true); setNote(null)
+    try {
+      const done = await closeAndDistributeDemo((next) => setStep(c[next]))
+      if (done.hash) setDistTx(done.hash)
+      setNote({ text: c.closeDone }); await load()
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e)
+      setNote({ text: m === 'NOT_ADMIN' ? c.notAdmin : m === 'ALREADY_DISTRIBUTED' ? c.closeAgain : m, bad: true })
+    } finally { setBusy(false); setStep('') }
+  }
   return <>
     <p className="ts-lead" style={{ fontSize: 14 }}>{c.tipsLead}</p>
     <div className="ts-grid2" style={{ marginTop: 18 }}>
@@ -500,6 +514,13 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
       {account ? <p className="ts-muted">{c.connectedAs}: <b className="ts-mono">{account}</b></p> : <div className="ts-actions" style={{ marginTop: 0 }}><button className="ts-btn quiet" disabled={busy} onClick={() => void connect()}>{c.connectAdmin}</button></div>}
       <label className="ts-field">{c.tipAmount}<input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
       <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !account || pool?.state !== 'collecting'} onClick={() => void open()}>{c.openSession}</button></div>
+    </div>
+    <div className="ts-card" style={{ marginTop: 16 }}>
+      <h3 className="ts-h3">{c.closeTitle}</h3>
+      <p className="ts-muted" style={{ fontSize: 13 }}>{c.closeText}</p>
+      {step && <div className="ts-notice" role="status">{step}</div>}
+      {distTx && <p style={{ marginTop: 10 }}><a href={explorerTransaction(distTx)} target="_blank" rel="noreferrer">{c.viewTx} ↗</a></p>}
+      <div className="ts-actions"><button className="ts-btn" disabled={busy || pool?.state === 'distributed' || (pool?.state === 'collecting' && BigInt(pool.balance) === 0n)} onClick={() => void closeShift()}>{c.closeBtn}</button></div>
     </div>
     {qr && <div className="ts-card" style={{ marginTop: 16, display: 'grid', justifyItems: 'center', textAlign: 'center' }}>
       <p className="ts-eyebrow">{c.customerQr}</p>

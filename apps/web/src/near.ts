@@ -167,3 +167,61 @@ export async function payTip(params: { accountId: string; paymentRef: string; am
   })
   return transactionHash(outcome)
 }
+
+const DISTRIBUTION_KEY = `tipshift-distribution-${DEMO_POOL_ID}`
+export function savedDistributionTx(): string | null {
+  try { return window.localStorage.getItem(DISTRIBUTION_KEY) } catch { return null }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+async function waitForPool(accept: (pool: PoolSummary) => boolean) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const pool = await readDemoPool().catch(() => null)
+    if (pool && accept(pool)) return pool
+    await sleep(1500)
+  }
+  throw new Error('The network has not confirmed the step yet. Refresh in a few seconds and try again.')
+}
+
+type ActionFactory = typeof import('@near-js/transactions').actionCreators
+const call = (actions: ActionFactory, methodName: string, args: object, deposit = 0n, gas = 100_000_000_000_000n) => actions.functionCall(methodName, args, gas, deposit)
+
+/**
+ * Demonstration close: the branch admin wallet closes collection, freezes the split and pays every
+ * payout. The roster of the demonstration pool is fixed, so this does not use the live check-ins.
+ */
+export async function closeAndDistributeDemo(onStep: (step: 'closing' | 'paying' | 'confirming') => void) {
+  const { wallet, accountId } = await connectTestnetWallet({})
+  if (accountId !== DEMO_ADMIN_ID) throw new Error('NOT_ADMIN')
+  let pool = await readDemoPool()
+  if (!pool) throw new Error('The demonstration pool is not available.')
+  if (pool.state === 'distributed') throw new Error('ALREADY_DISTRIBUTED')
+  const { actionCreators } = await import('@near-js/transactions')
+  let lastHash: string | null = null
+
+  if (pool.state === 'collecting' || pool.state === 'distributable') {
+    onStep('closing')
+    const actions = [
+      ...(pool.state === 'collecting' ? [call(actionCreators, 'close_collection', { pool_id: DEMO_POOL_ID }, 0n, 30_000_000_000_000n)] : []),
+      call(actionCreators, 'prepare_distribution', { pool_id: DEMO_POOL_ID }, 0n, 60_000_000_000_000n),
+    ]
+    await wallet.signAndSendTransactions({ transactions: [{ signerId: accountId, receiverId: VAULT_ACCOUNT_ID, actions }] })
+    pool = await waitForPool((p) => p.state === 'paying')
+  }
+  if (pool.state !== 'paying') throw new Error(`The pool is in state "${pool.state}" and cannot be distributed.`)
+
+  onStep('paying')
+  const transactions = Array.from({ length: pool.payout_count }, (_, index) => ({
+    signerId: accountId,
+    receiverId: VAULT_ACCOUNT_ID,
+    actions: [call(actionCreators, 'dispatch_payout', { pool_id: DEMO_POOL_ID, payout_index: index }, 1n)],
+  }))
+  const outcomes = await wallet.signAndSendTransactions({ transactions })
+  const list = Array.isArray(outcomes) ? outcomes : []
+  lastHash = list.length ? transactionHash(list[list.length - 1]) : null
+
+  onStep('confirming')
+  const done = await waitForPool((p) => p.state === 'distributed')
+  if (lastHash) { try { window.localStorage.setItem(DISTRIBUTION_KEY, lastHash) } catch { /* link is only a convenience */ } }
+  return { pool: done, hash: lastHash }
+}
