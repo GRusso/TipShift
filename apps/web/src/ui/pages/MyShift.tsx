@@ -1,7 +1,7 @@
 import { Buffer } from 'buffer'
 import { useEffect, useMemo, useState } from 'react'
 import { splitShiftTips } from '../../../../../src/core/group-split.mjs'
-import { connectTestnetWallet, explorerTransaction, readDemoPool } from '../../near'
+import { connectTestnetWallet, disconnectTestnetWallet, explorerTransaction, readDemoPool } from '../../near'
 import { callTipshift, publicClient, type PublicClient } from '../client'
 import { downloadCsv } from '../csv'
 import { useCopy } from '../i18n'
@@ -16,7 +16,7 @@ const copy = {
     ribbon: 'MY SHIFTS · Testnet',
     eyebrow: 'EMPLOYEE VIEW', title: 'What I earned in my shifts',
     lead: 'Sign with the wallet you registered to see the shifts you were present for. Your manager never sees your wallet.',
-    connect: 'Connect wallet and see my shifts', working: 'Waiting for your wallet…', failed: 'Your shifts could not be loaded. Use the wallet you registered with.', noSig: 'The wallet did not return a signature.',
+    connect: 'Connect wallet and see my shifts', other: 'Use another wallet', working: 'Waiting for your wallet…', failed: 'Your shifts could not be loaded. Use the wallet you registered with.', noSig: 'The wallet did not return a signature.',
     none: 'No shifts to show. Check in with your group’s QR at the start of a shift.',
     group: 'Group', yourShare: 'YOUR SHARE', groupTotal: 'Group total', team: 'Your group', presentIn: 'present in your group',
     download: 'Download CSV', hide: 'Hide', hideConfirm: 'Hide this report from your view? It does not delete it for the business.', hideFail: 'The report could not be hidden.',
@@ -27,7 +27,7 @@ const copy = {
     ribbon: 'MIS TURNOS · Testnet',
     eyebrow: 'VISTA DEL EMPLEADO', title: 'Lo que gané en mis turnos',
     lead: 'Firmá con la wallet que registraste para ver los turnos en los que estuviste presente. Tu gerente nunca ve tu wallet.',
-    connect: 'Conectar wallet y ver mis turnos', working: 'Esperando tu wallet…', failed: 'No se pudieron cargar tus turnos. Usá la wallet con la que te registraste.', noSig: 'La wallet no devolvió una firma.',
+    connect: 'Conectar wallet y ver mis turnos', other: 'Usar otra wallet', working: 'Esperando tu wallet…', failed: 'No se pudieron cargar tus turnos. Usá la wallet con la que te registraste.', noSig: 'La wallet no devolvió una firma.',
     none: 'No hay turnos para mostrar. Hacé el check-in con el QR de tu grupo al comenzar un turno.',
     group: 'Grupo', yourShare: 'TU PARTE', groupTotal: 'Total del grupo', team: 'Tu grupo', presentIn: 'presentes en tu grupo',
     download: 'Descargar CSV', hide: 'Ocultar', hideConfirm: '¿Ocultar este reporte de tu vista? No lo elimina para el local.', hideFail: 'No se pudo ocultar el reporte.',
@@ -56,6 +56,8 @@ export function MyShift() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   useEffect(() => { void readDemoPool().then((p) => setBalance(p ? BigInt(p.balance) : 0n)).catch(() => undefined) }, [])
+
+  const switchWallet = async () => { await disconnectTestnetWallet().catch(() => undefined); setReports(null); setMessage('') }
 
   const load = async () => {
     if (!client) return
@@ -100,6 +102,7 @@ export function MyShift() {
       <p className="ts-lead" style={{ fontSize: 14 }}>{c.lead}</p>
       {message && <div className="ts-notice bad" role="alert">{message}</div>}
       {!reports && <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !client} onClick={() => void load()}>{busy ? c.working : c.connect}</button></div>}
+      {reports && <div className="ts-actions"><button className="ts-btn small" onClick={() => void switchWallet()}>{c.other}</button></div>}
     </div>
     {reports && reports.length === 0 && <div className="ts-notice">{c.none}</div>}
     {(reports ?? []).map((report) => {

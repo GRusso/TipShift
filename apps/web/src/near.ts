@@ -19,15 +19,42 @@ export type PoolSummary = {
 
 let selectorPromise: Promise<WalletSelector> | undefined
 
+// Wallets that implement NEP-413 message signing, which the registration, check-in and report flows need.
 function selector() {
   selectorPromise ??= Promise.all([
     import('@near-wallet-selector/core'),
     import('@near-wallet-selector/meteor-wallet'),
-  ]).then(([core, meteor]) => core.setupWalletSelector({
+    import('@near-wallet-selector/my-near-wallet'),
+    import('@near-wallet-selector/here-wallet'),
+    import('@near-wallet-selector/nightly'),
+  ]).then(([core, meteor, myNear, here, nightly]) => core.setupWalletSelector({
     network: 'testnet',
-    modules: [meteor.setupMeteorWallet()],
+    modules: [meteor.setupMeteorWallet(), myNear.setupMyNearWallet(), here.setupHereWallet(), nightly.setupNightly()],
   }))
   return selectorPromise
+}
+
+const modals = new Map<string, { show: () => void; hide: () => void; on: (event: 'onHide', callback: () => void) => { remove: () => void } }>()
+
+// Opens the wallet chooser and resolves once the person has signed in with any of the wallets.
+async function chooseWallet(activeSelector: WalletSelector, params: { contractId?: string; methodNames?: string[] }) {
+  const { setupModal } = await import('@near-wallet-selector/modal-ui')
+  await import('@near-wallet-selector/modal-ui/styles.css')
+  const key = `${params.contractId ?? ''}|${(params.methodNames ?? []).join(',')}`
+  let modal = modals.get(key)
+  if (!modal) {
+    modal = setupModal(activeSelector, { contractId: params.contractId, methodNames: params.methodNames, theme: 'auto' }) as never
+    modals.set(key, modal!)
+  }
+  const shown = modal!
+  await new Promise<void>((resolve, reject) => {
+    const subscription = activeSelector.on('signedIn', () => { subscription.remove(); hidden.remove(); resolve() })
+    const hidden = shown.on('onHide', () => {
+      // Wallets that leave the page signal a hide too; only a closed modal without a session is a cancellation.
+      setTimeout(() => { if (!activeSelector.isSignedIn()) { subscription.remove(); hidden.remove(); reject(new Error('No wallet was connected.')) } }, 400)
+    })
+    shown.show()
+  })
 }
 
 function base64Json(value: object) {
@@ -69,13 +96,18 @@ export async function readDemoPool() {
 
 export async function connectTestnetWallet(params: { contractId?: string; methodNames?: string[] } = {}) {
   const activeSelector = await selector()
-  // Only one wallet module is installed, so name it: without a previous sign-in the selector has no wallet selected.
-  const wallet = await activeSelector.wallet('meteor-wallet')
-  if (!activeSelector.isSignedIn()) await wallet.signIn(params as never)
+  if (!activeSelector.isSignedIn()) await chooseWallet(activeSelector, params)
+  const wallet = await activeSelector.wallet()
   const accounts = await wallet.getAccounts()
   const accountId = accounts.at(0)?.accountId
-  if (!accountId) throw new Error('Meteor Wallet did not return a testnet account.')
+  if (!accountId) throw new Error('The wallet did not return a testnet account.')
   return { wallet, accountId }
+}
+
+// Signs out so another account can be chosen the next time a wallet is needed.
+export async function disconnectTestnetWallet() {
+  const activeSelector = await selector()
+  if (activeSelector.isSignedIn()) await (await activeSelector.wallet()).signOut()
 }
 
 function transactionHash(outcome: unknown) {
