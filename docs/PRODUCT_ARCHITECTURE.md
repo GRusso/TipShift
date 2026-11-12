@@ -32,9 +32,10 @@ Organization            created once by the owner / master admin
    disputes. Admins never see wallets. Trade-off accepted: one employee is linkable
    to their own branch (not across branches); never to a name, email or phone.
 2. **Manager access = revocable email invitation.** States: invited → active →
-   revoked. Revocation takes effect immediately. Wallet login for managers is
-   deferred (needs a second auth system); the manager's NEAR wallet is used to sign
-   payouts, not to sign in.
+   revoked. Revocation takes effect immediately. **Planned (post-hackathon): manager
+   sign-in with a NEAR wallet (NEP-413)** alongside email. It is deferred because it
+   needs a second auth system for a role that handles money; it will be built, not
+   dropped. Say so in the presentation.
 3. **Demo scope = realistic cut.** No automatic generation of future weeks, no
    payroll, no historical reporting.
 4. **Schedule bridge (demo):** the admin UI only offers `start_collection` when the
@@ -42,6 +43,10 @@ Organization            created once by the owner / master admin
    The contract holding the testnet proof is never modified.
 5. **NEAR model:** company account → branch subaccount; the manager holds a
    revocable full-access key on the branch subaccount.
+6. **Demo payout signer = the branch wallet** (`centro.goodmorningcoffee.testnet`).
+   The branch account pays the payout gas, so employees receive **100% of the tips**:
+   the contract distributes the exact pool balance (proven on testnet: three payouts
+   exhaust the pool to zero) and no fee or gas is deducted from it.
 
 ## What is reused vs. changed
 
