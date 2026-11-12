@@ -7,6 +7,7 @@ import { attachPrivateManifest, buildPrivateTurnManifest, sealPrivateManifest } 
 type Group = { groupRef: string; shareBps: number }
 type Recipient = { groupRef: string; recipientSlot: number; shareWeight: number }
 type ClaimLink = { recipientSlot: number; url: string }
+type Invitation = { invitation_id: string; branch_ref: string; branch_label: string; manager_email: string; status: 'invited' | 'active' | 'revoked'; created_at: string }
 type TurnStatus = { turnRef: string; state: 'claiming' | 'collecting'; recipientCount: number; verifiedCount: number; scheduledStartsAt: string; scheduledEndsAt: string }
 type AdminScope = { venue_ref: string; organization_name: string | null; branch_ref: string | null; branch_label: string | null; branch_address: string | null; role: 'organization_admin' | 'branch_admin' }
 
@@ -52,6 +53,10 @@ export function AdminTurnCreator() {
   const [newBranchLabel, setNewBranchLabel] = useState('')
   const [newBranchAddress, setNewBranchAddress] = useState('')
   const [organizationNameInput, setOrganizationNameInput] = useState('')
+  const [view, setView] = useState<'master' | 'branch'>('master')
+  const [invitations, setInvitations] = useState<Invitation[]>([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteBranchRef, setInviteBranchRef] = useState('')
   const [scheduledStartsAt, setScheduledStartsAt] = useState(nextShiftStart)
   const [scheduledEndsAt, setScheduledEndsAt] = useState(nextShiftEnd)
   const [groups, setGroups] = useState<Group[]>([{ groupRef: uuid(), shareBps: 10_000 }])
@@ -104,6 +109,19 @@ export function AdminTurnCreator() {
   // The callback uses the active Supabase session; its token is the stable trigger.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.access_token])
+
+  const ownerVenueRef = scopes.find((scope) => scope.role === 'organization_admin')?.venue_ref ?? null
+  const refreshInvitations = async () => {
+    if (!client || !session || !ownerVenueRef) { setInvitations([]); return }
+    const { data } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_manager_invitations', venueRef: ownerVenueRef } })
+    const next = data as { invitations?: Invitation[] } | null
+    setInvitations(Array.isArray(next?.invitations) ? next.invitations : [])
+  }
+  useEffect(() => {
+    void refreshInvitations()
+  // Reload whenever the authorized organization or session changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownerVenueRef, session?.access_token])
 
   const sendMagicLink = async () => {
     if (!client) return
@@ -201,6 +219,30 @@ export function AdminTurnCreator() {
     await refreshScopes()
   }
 
+  const inviteManager = async () => {
+    if (!client || !session || !ownerVenueRef) return
+    setBusy(true); setMessage(null)
+    const { data, error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_invite_manager', venueRef: ownerVenueRef, branchRef: inviteBranchRef, email: inviteEmail } })
+    setBusy(false)
+    if (error) {
+      setMessage('The invitation was not created. Check the e-mail and the branch.')
+      return
+    }
+    const emailSent = (data as { emailSent?: boolean } | null)?.emailSent
+    setMessage(emailSent ? 'Invitation sent. The manager can sign in with that e-mail.' : 'Invitation recorded. The manager can sign in with a magic link using that e-mail.')
+    setInviteEmail('')
+    await refreshInvitations()
+  }
+
+  const revokeManager = async (invitationId: string) => {
+    if (!client || !session) return
+    setBusy(true); setMessage(null)
+    const { error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_revoke_manager', invitationId } })
+    setBusy(false)
+    setMessage(error ? 'The invitation could not be revoked.' : 'Manager access revoked.')
+    await refreshInvitations()
+  }
+
   const registerBranch = async () => {
     if (!client || !session) return
     const organization = scopes.find((scope) => scope.role === 'organization_admin')
@@ -254,10 +296,12 @@ export function AdminTurnCreator() {
   const canRegisterBranch = scopes.some((scope) => scope.role === 'organization_admin')
   const organizationName = scopes.find((scope) => scope.role === 'organization_admin')?.organization_name ?? null
   const configLocked = Boolean(turnRef)
+  const isOwner = canRegisterBranch
+  const activeView = isOwner ? view : 'branch'
   return <main className="private-admin"><section>
-    <header><div><p className="eyebrow">TIPSHIFT · PRIVATE ADMIN</p><h1>Create a private shift</h1></div><button className="secondary" onClick={() => void client.auth.signOut()}>Sign out</button></header>
-    <p>Admins define anonymous slots, groups and shares. Recipient wallets are never requested, shown or editable here.</p>
-    {branchScopes.length > 0 ? <div className="admin-grid"><label>Authorized branch<select disabled={configLocked} value={selectedBranchRef} onChange={(event) => setSelectedBranchRef(event.target.value)}>{branchScopes.map((scope) => <option key={scope.branch_ref} value={scope.branch_ref}>{scope.branch_label}</option>)}</select></label><label>Shift starts<input disabled={configLocked} value={scheduledStartsAt} onChange={(event) => setScheduledStartsAt(event.target.value)} type="datetime-local" /></label><label>Shift ends<input disabled={configLocked} value={scheduledEndsAt} onChange={(event) => setScheduledEndsAt(event.target.value)} type="datetime-local" /></label></div> : <div className="admin-grid"><p className="admin-message">No active branch is registered for this private organization.</p></div>}
+    <header><div><p className="eyebrow">TIPSHIFT · PRIVATE ADMIN{organizationName ? ` · ${organizationName.toUpperCase()}` : ''}</p><h1>{activeView === 'master' ? 'Organization console' : 'Branch console'}</h1></div><button className="secondary" onClick={() => void client.auth.signOut()}>Sign out</button></header>
+    {isOwner && <div className="actions"><button className={activeView === 'master' ? 'primary' : 'secondary'} onClick={() => setView('master')}>Organization</button><button className={activeView === 'branch' ? 'primary' : 'secondary'} onClick={() => setView('branch')}>Branch console</button></div>}
+    {activeView === 'master' ? <>
     {canRegisterBranch && <>
       <h2>Organization{organizationName ? ` · ${organizationName}` : ''}</h2>
       <div className="admin-grid">
@@ -266,13 +310,24 @@ export function AdminTurnCreator() {
       </div>
       {!organizationName && <p className="admin-message">Name the organization first. Branches are registered under it.</p>}
       <h2>Branches</h2>
-      <p className="admin-message">{branchScopes.length ? branchScopes.map((scope) => scope.branch_address ? `${scope.branch_label} (${scope.branch_address})` : scope.branch_label).join(' · ') : 'No branches yet.'}</p>
+      {branchScopes.length ? branchScopes.map((scope) => <div className="admin-row" key={scope.branch_ref}><label>{scope.branch_label}<code>{scope.branch_address ?? 'No address'}</code></label><span /><button className="secondary" onClick={() => { setSelectedBranchRef(scope.branch_ref); setView('branch') }}>Open branch console</button></div>) : <p className="admin-message">No branches yet.</p>}
       <div className="admin-grid">
         <label>Branch name<input disabled={configLocked || !organizationName} value={newBranchLabel} onChange={(event) => setNewBranchLabel(event.target.value)} maxLength={80} placeholder="Downtown" /></label>
         <label>Address (optional)<input disabled={configLocked || !organizationName} value={newBranchAddress} onChange={(event) => setNewBranchAddress(event.target.value)} maxLength={160} placeholder="123 Main St" /></label>
         <button className="secondary" disabled={busy || configLocked || !organizationName || !newBranchLabel.trim()} onClick={() => void registerBranch()}>Register branch</button>
       </div>
     </>}
+    <h2>Branch managers</h2>
+    <p className="admin-message">Invite one manager per branch. A manager sees only that branch and never any employee wallet. You can revoke access at any time.</p>
+    <div className="admin-grid">
+      <label>Branch<select value={inviteBranchRef} onChange={(event) => setInviteBranchRef(event.target.value)}><option value="">Choose a branch</option>{branchScopes.map((scope) => <option key={scope.branch_ref} value={scope.branch_ref}>{scope.branch_label}</option>)}</select></label>
+      <label>Manager e-mail<input type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} maxLength={254} placeholder="manager@example.com" /></label>
+      <button className="secondary" disabled={busy || !inviteBranchRef || !inviteEmail.trim()} onClick={() => void inviteManager()}>Invite manager</button>
+    </div>
+    {invitations.filter((invitation) => invitation.status !== 'revoked').map((invitation) => <div className="admin-row" key={invitation.invitation_id}><label>{invitation.branch_label} · {invitation.status}<code>{invitation.manager_email}</code></label><span /><button className="secondary" disabled={busy} onClick={() => void revokeManager(invitation.invitation_id)}>Revoke</button></div>)}
+    </> : <>
+    <p>Define this branch's anonymous slots, groups and shares. Recipient wallets are never requested, shown or editable here.</p>
+    {branchScopes.length > 0 ? <div className="admin-grid"><label>Authorized branch<select disabled={configLocked} value={selectedBranchRef} onChange={(event) => setSelectedBranchRef(event.target.value)}>{branchScopes.map((scope) => <option key={scope.branch_ref} value={scope.branch_ref}>{scope.branch_label}</option>)}</select></label><label>Shift starts<input disabled={configLocked} value={scheduledStartsAt} onChange={(event) => setScheduledStartsAt(event.target.value)} type="datetime-local" /></label><label>Shift ends<input disabled={configLocked} value={scheduledEndsAt} onChange={(event) => setScheduledEndsAt(event.target.value)} type="datetime-local" /></label></div> : <div className="admin-grid"><p className="admin-message">No active branch is registered for this private organization.</p></div>}
     <p className="admin-message">Recipient claims close when the shift starts. Tip collection can start only within the scheduled shift window.</p>
     <h2>Groups · {shareTotal / 100}% allocated</h2>
     {groups.map((group, index) => <div className="admin-row" key={group.groupRef}><label>Group name<input disabled={configLocked} value={labels.groups[group.groupRef] ?? ''} maxLength={48} placeholder="Waitstaff" onChange={(event) => setGroupLabel(group.groupRef, event.target.value)} /></label><label>Percentage of shift<input disabled={configLocked} type="number" min="0.01" max="100" step="0.01" value={group.shareBps / 100} onChange={(event) => setGroups(updateAt(groups, index, { ...group, shareBps: Math.round(Number(event.target.value) * 100) }))} /></label><label><input disabled={configLocked} type="checkbox" checked={isEqualSplit(group.groupRef)} onChange={(event) => setEqualSplit(group.groupRef, event.target.checked)} /> All recipients share this group equally</label><button className="secondary" disabled={configLocked || groups.length === 1} onClick={() => { setGroups(groups.filter((_, item) => item !== index)); setRecipients(recipients.filter((recipient) => recipient.groupRef !== group.groupRef)); setEqualSplitGroups((current) => ({ ...current, [group.groupRef]: false })) }}>Remove</button></div>)}
@@ -284,7 +339,8 @@ export function AdminTurnCreator() {
     {!recipientPercentagesValid && <p className="admin-message">Each group must allocate exactly 100% among its recipient slots.</p>}
     <div className="actions"><button className="primary" disabled={configLocked || busy || shareTotal !== PERCENT_SCALE || !recipientPercentagesValid || !selectedBranchRef} onClick={() => void createTurn()}>Create shift and private links</button></div>
     {turnStatus && <div className="admin-message"><strong>Recipient verification:</strong> {turnStatus.verifiedCount} / {turnStatus.recipientCount}. <button className="secondary" disabled={busy} onClick={() => void refreshTurnStatus()}>Refresh</button><button className="primary" disabled={busy || turnStatus.state !== 'claiming' || turnStatus.verifiedCount !== turnStatus.recipientCount} onClick={() => void startTurn()}>Start and lock shift</button></div>}
-    {message && <p className="admin-message">{message}</p>}
     {claimLinks.length > 0 && <div className="claim-links"><h2>Private recipient QR codes</h2><p>Give each QR only to its assigned recipient. Its opaque capability and encrypted allocation manifest live only in the URL fragment; neither is persisted by TipShift.</p><p>These QR codes are locked to this schedule and allocation revision. To change either, create a new shift and distribute only its new links.</p>{claimLinks.map((link) => <article key={link.recipientSlot}><strong>{labels.recipients[String(link.recipientSlot)] || `Anonymous slot ${link.recipientSlot}`}</strong>{claimQrs[link.recipientSlot] && <img src={claimQrs[link.recipientSlot]} alt={`Private QR for recipient ${link.recipientSlot}`} />}<a href={link.url}>{link.url}</a></article>)}</div>}
+    </>}
+    {message && <p className="admin-message">{message}</p>}
   </section></main>
 }
