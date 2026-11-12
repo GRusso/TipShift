@@ -255,6 +255,25 @@ async function handleAdminManagerInvitations(request: Request, payload: Record<s
   return { status: 200, payload: { invitations: data } }
 }
 
+async function handleAdminBranchSchedule(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const branchRef = requiredUuid(payload.branchRef, 'branchRef')
+  const { data, error } = await principal.service.rpc('tipshift_admin_branch_schedule', { p_admin_user_id: principal.userId, p_branch_ref: branchRef })
+  if (error || !Array.isArray(data)) return { status: 503, payload: { error: 'admin_unavailable' } }
+  return { status: 200, payload: { blocks: data } }
+}
+
+async function handleAdminSetBranchSchedule(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const branchRef = requiredUuid(payload.branchRef, 'branchRef')
+  if (!Array.isArray(payload.blocks) || payload.blocks.length > 70) return { status: 400, payload: { error: 'schedule_invalid' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_set_branch_schedule', { p_admin_user_id: principal.userId, p_branch_ref: branchRef, p_blocks: payload.blocks })
+  if (error || typeof data !== 'number' || data < 0) return { status: 409, payload: { error: 'schedule_unavailable' } }
+  return { status: 200, payload: { saved: data } }
+}
+
 async function handleAdminSetOrganization(request: Request, payload: Record<string, unknown>) {
   const principal = await authenticatedAdmin(request)
   if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
@@ -316,6 +335,14 @@ Deno.serve(async (request) => {
     }
     if (action === 'admin_manager_invitations') {
       const result = await handleAdminManagerInvitations(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_branch_schedule') {
+      const result = await handleAdminBranchSchedule(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_set_branch_schedule') {
+      const result = await handleAdminSetBranchSchedule(request, payload)
       return json(result.payload, result.status, cors)
     }
     if (action === 'admin_set_organization') {

@@ -8,10 +8,23 @@ type Group = { groupRef: string; shareBps: number }
 type Recipient = { groupRef: string; recipientSlot: number; shareWeight: number }
 type ClaimLink = { recipientSlot: number; url: string }
 type Invitation = { invitation_id: string; branch_ref: string; branch_label: string; manager_email: string; status: 'invited' | 'active' | 'revoked'; created_at: string }
+type ScheduleBlock = { weekday: number; startsAt: string; endsAt: string; label: string }
 type TurnStatus = { turnRef: string; state: 'claiming' | 'collecting'; recipientCount: number; verifiedCount: number; scheduledStartsAt: string; scheduledEndsAt: string }
 type AdminScope = { venue_ref: string; organization_name: string | null; branch_ref: string | null; branch_label: string | null; branch_address: string | null; role: 'organization_admin' | 'branch_admin' }
 
 const PERCENT_SCALE = 10_000
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const pad2 = (value: number) => String(value).padStart(2, '0')
+const isoDate = (value: Date) => `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())}`
+// Next calendar date (today included) whose weekday is 1 = Monday .. 7 = Sunday.
+const nextDateForWeekday = (weekday: number) => {
+  const date = new Date()
+  for (let offset = 0; offset < 7; offset += 1) {
+    if (((date.getDay() + 6) % 7) + 1 === weekday) return isoDate(date)
+    date.setDate(date.getDate() + 1)
+  }
+  return isoDate(new Date())
+}
 const uuid = () => crypto.randomUUID()
 const localDateTime = (value: Date) => {
   value.setSeconds(0, 0)
@@ -54,6 +67,11 @@ export function AdminTurnCreator() {
   const [newBranchAddress, setNewBranchAddress] = useState('')
   const [organizationNameInput, setOrganizationNameInput] = useState('')
   const [view, setView] = useState<'master' | 'branch'>('master')
+  const [branchTab, setBranchTab] = useState<'schedule' | 'shift'>('schedule')
+  const [schedule, setSchedule] = useState<ScheduleBlock[]>([])
+  const [savedSchedule, setSavedSchedule] = useState<ScheduleBlock[]>([])
+  const [blockChoice, setBlockChoice] = useState('')
+  const [shiftDate, setShiftDate] = useState('')
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteBranchRef, setInviteBranchRef] = useState('')
@@ -122,6 +140,32 @@ export function AdminTurnCreator() {
   // Reload whenever the authorized organization or session changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerVenueRef, session?.access_token])
+
+  const loadSchedule = async (branchRef: string) => {
+    if (!client || !session || !branchRef) { setSchedule([]); setSavedSchedule([]); return }
+    const { data } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_branch_schedule', branchRef } })
+    const rows = (data as { blocks?: { weekday: number; starts_at: string; ends_at: string; block_label: string | null }[] } | null)?.blocks
+    const blocks = Array.isArray(rows) ? rows.map((row) => ({ weekday: row.weekday, startsAt: row.starts_at, endsAt: row.ends_at, label: row.block_label ?? '' })) : []
+    setSchedule(blocks); setSavedSchedule(blocks); setBlockChoice('')
+  }
+  useEffect(() => {
+    void loadSchedule(selectedBranchRef)
+  // Reload when the branch or session changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranchRef, session?.access_token])
+  useEffect(() => {
+    const block = savedSchedule[Number(blockChoice)]
+    if (blockChoice === '' || !block) return
+    setShiftDate(nextDateForWeekday(block.weekday))
+  }, [blockChoice, savedSchedule])
+  useEffect(() => {
+    const block = savedSchedule[Number(blockChoice)]
+    if (blockChoice === '' || !block || !shiftDate) return
+    const [year, month, day] = shiftDate.split('-').map(Number)
+    const end = new Date(year, month - 1, day + (block.endsAt <= block.startsAt ? 1 : 0))
+    setScheduledStartsAt(`${shiftDate}T${block.startsAt}`)
+    setScheduledEndsAt(`${isoDate(end)}T${block.endsAt}`)
+  }, [blockChoice, shiftDate, savedSchedule])
 
   const sendMagicLink = async () => {
     if (!client) return
@@ -243,6 +287,20 @@ export function AdminTurnCreator() {
     await refreshInvitations()
   }
 
+  const saveSchedule = async () => {
+    if (!client || !session || !selectedBranchRef) return
+    setBusy(true); setMessage(null)
+    const { error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_set_branch_schedule', branchRef: selectedBranchRef, blocks: schedule.map((block) => ({ weekday: block.weekday, startsAt: block.startsAt, endsAt: block.endsAt, label: block.label })) } })
+    setBusy(false)
+    if (error) {
+      setMessage('The weekly schedule was not saved. Check that no block starts and ends at the same time and that start times are not repeated in a day.')
+      return
+    }
+    setMessage('Weekly schedule saved.')
+    await loadSchedule(selectedBranchRef)
+  }
+  const updateBlock = (index: number, patch: Partial<ScheduleBlock>) => setSchedule((current) => current.map((block, position) => position === index ? { ...block, ...patch } : block))
+
   const registerBranch = async () => {
     if (!client || !session) return
     const organization = scopes.find((scope) => scope.role === 'organization_admin')
@@ -326,8 +384,30 @@ export function AdminTurnCreator() {
     </div>
     {invitations.filter((invitation) => invitation.status !== 'revoked').map((invitation) => <div className="admin-row" key={invitation.invitation_id}><label>{invitation.branch_label} · {invitation.status}<code>{invitation.manager_email}</code></label><span /><button className="secondary" disabled={busy} onClick={() => void revokeManager(invitation.invitation_id)}>Revoke</button></div>)}
     </> : <>
-    <p>Define this branch's anonymous slots, groups and shares. Recipient wallets are never requested, shown or editable here.</p>
-    {branchScopes.length > 0 ? <div className="admin-grid"><label>Authorized branch<select disabled={configLocked} value={selectedBranchRef} onChange={(event) => setSelectedBranchRef(event.target.value)}>{branchScopes.map((scope) => <option key={scope.branch_ref} value={scope.branch_ref}>{scope.branch_label}</option>)}</select></label><label>Shift starts<input disabled={configLocked} value={scheduledStartsAt} onChange={(event) => setScheduledStartsAt(event.target.value)} type="datetime-local" /></label><label>Shift ends<input disabled={configLocked} value={scheduledEndsAt} onChange={(event) => setScheduledEndsAt(event.target.value)} type="datetime-local" /></label></div> : <div className="admin-grid"><p className="admin-message">No active branch is registered for this private organization.</p></div>}
+    <p className="admin-message">{branchScopes.length ? 'Everything here belongs to a single branch: its weekly schedule, its groups and its private links.' : 'No branch is available for this account.'}</p>
+    {branchScopes.length > 1 ? <div className="admin-grid"><label>Branch<select disabled={configLocked} value={selectedBranchRef} onChange={(event) => setSelectedBranchRef(event.target.value)}>{branchScopes.map((scope) => <option key={scope.branch_ref} value={scope.branch_ref}>{scope.branch_label}</option>)}</select></label></div> : branchScopes.length === 1 ? <h2>{branchScopes[0].branch_label}</h2> : null}
+    <div className="actions"><button className={branchTab === 'schedule' ? 'primary' : 'secondary'} onClick={() => setBranchTab('schedule')}>Weekly schedule</button><button className={branchTab === 'shift' ? 'primary' : 'secondary'} onClick={() => setBranchTab('shift')}>Shift &amp; private links</button></div>
+    {branchTab === 'schedule' ? <>
+      <p className="admin-message">Define when this branch works, Monday to Sunday. A block that ends earlier than it starts continues past midnight (for example 20:00 to 02:00).</p>
+      {DAYS.map((day, dayIndex) => <div key={day}>
+        <h2>{day}</h2>
+        {schedule.map((block, index) => block.weekday === dayIndex + 1 ? <div className="admin-row schedule-row" key={index}>
+          <label>Name (optional)<input value={block.label} maxLength={40} placeholder="Lunch" onChange={(event) => updateBlock(index, { label: event.target.value })} /></label>
+          <label>Starts<input type="time" value={block.startsAt} onChange={(event) => updateBlock(index, { startsAt: event.target.value })} /></label>
+          <label>Ends<input type="time" value={block.endsAt} onChange={(event) => updateBlock(index, { endsAt: event.target.value })} /></label>
+          <button className="secondary" onClick={() => setSchedule((current) => current.filter((_, position) => position !== index))}>Remove</button>
+        </div> : null)}
+        <button className="secondary" disabled={schedule.length >= 70} onClick={() => setSchedule((current) => [...current, { weekday: dayIndex + 1, startsAt: '09:00', endsAt: '17:00', label: '' }])}>Add block</button>
+      </div>)}
+      <div className="actions"><button className="primary" disabled={busy || !selectedBranchRef} onClick={() => void saveSchedule()}>Save weekly schedule</button></div>
+    </> : savedSchedule.length === 0 ? <>
+      <p className="admin-message">Set and save the weekly schedule first. Shifts are created from its blocks.</p>
+      <div className="actions"><button className="secondary" onClick={() => setBranchTab('schedule')}>Go to weekly schedule</button></div>
+    </> : <>
+      <div className="admin-grid">
+        <label>Shift (from the weekly schedule)<select disabled={configLocked} value={blockChoice} onChange={(event) => setBlockChoice(event.target.value)}><option value="">Choose a block</option>{savedSchedule.map((block, index) => <option key={index} value={String(index)}>{DAYS[block.weekday - 1].slice(0, 3)} {block.startsAt}–{block.endsAt}{block.label ? ` · ${block.label}` : ''}</option>)}</select></label>
+        <label>Date<input disabled={configLocked || blockChoice === ''} type="date" value={shiftDate} onChange={(event) => setShiftDate(event.target.value)} /></label>
+      </div>
     <p className="admin-message">Recipient claims close when the shift starts. Tip collection can start only within the scheduled shift window.</p>
     <h2>Groups · {shareTotal / 100}% allocated</h2>
     {groups.map((group, index) => <div className="admin-row" key={group.groupRef}><label>Group name<input disabled={configLocked} value={labels.groups[group.groupRef] ?? ''} maxLength={48} placeholder="Waitstaff" onChange={(event) => setGroupLabel(group.groupRef, event.target.value)} /></label><label>Percentage of shift<input disabled={configLocked} type="number" min="0.01" max="100" step="0.01" value={group.shareBps / 100} onChange={(event) => setGroups(updateAt(groups, index, { ...group, shareBps: Math.round(Number(event.target.value) * 100) }))} /></label><label><input disabled={configLocked} type="checkbox" checked={isEqualSplit(group.groupRef)} onChange={(event) => setEqualSplit(group.groupRef, event.target.checked)} /> All recipients share this group equally</label><button className="secondary" disabled={configLocked || groups.length === 1} onClick={() => { setGroups(groups.filter((_, item) => item !== index)); setRecipients(recipients.filter((recipient) => recipient.groupRef !== group.groupRef)); setEqualSplitGroups((current) => ({ ...current, [group.groupRef]: false })) }}>Remove</button></div>)}
@@ -337,9 +417,10 @@ export function AdminTurnCreator() {
     {recipients.map((recipient, index) => <div className="admin-row" key={`${recipient.groupRef}-${recipient.recipientSlot}`}><label>Private alias (max. 3 letters/numbers)<input disabled={configLocked} value={labels.recipients[String(recipient.recipientSlot)] ?? ''} maxLength={3} placeholder="EJ1" onChange={(event) => setRecipientLabel(recipient.recipientSlot, event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3))} /></label><label>Group<select disabled={configLocked} value={recipient.groupRef} onChange={(event) => moveRecipient(index, event.target.value)}>{groups.map((group, groupIndex) => <option key={group.groupRef} value={group.groupRef}>{labels.groups[group.groupRef]?.trim() || `Group ${groupIndex + 1}`}</option>)}</select></label><label>Percentage within group<input type="number" min="0.01" max="100" step="0.01" disabled={configLocked || isEqualSplit(recipient.groupRef)} value={recipient.shareWeight / 100} onChange={(event) => setRecipients(updateAt(recipients, index, { ...recipient, shareWeight: Math.round(Number(event.target.value) * 100) }))} /></label><button className="secondary" disabled={configLocked || recipients.length === 1} onClick={() => removeRecipient(index)}>Remove</button></div>)}
     <button className="secondary" disabled={configLocked || recipients.length >= 100} onClick={addRecipient}>Add anonymous slot</button>
     {!recipientPercentagesValid && <p className="admin-message">Each group must allocate exactly 100% among its recipient slots.</p>}
-    <div className="actions"><button className="primary" disabled={configLocked || busy || shareTotal !== PERCENT_SCALE || !recipientPercentagesValid || !selectedBranchRef} onClick={() => void createTurn()}>Create shift and private links</button></div>
+    <div className="actions"><button className="primary" disabled={configLocked || busy || shareTotal !== PERCENT_SCALE || !recipientPercentagesValid || !selectedBranchRef || blockChoice === ''} onClick={() => void createTurn()}>Create shift and private links</button></div>
     {turnStatus && <div className="admin-message"><strong>Recipient verification:</strong> {turnStatus.verifiedCount} / {turnStatus.recipientCount}. <button className="secondary" disabled={busy} onClick={() => void refreshTurnStatus()}>Refresh</button><button className="primary" disabled={busy || turnStatus.state !== 'claiming' || turnStatus.verifiedCount !== turnStatus.recipientCount} onClick={() => void startTurn()}>Start and lock shift</button></div>}
     {claimLinks.length > 0 && <div className="claim-links"><h2>Private recipient QR codes</h2><p>Give each QR only to its assigned recipient. Its opaque capability and encrypted allocation manifest live only in the URL fragment; neither is persisted by TipShift.</p><p>These QR codes are locked to this schedule and allocation revision. To change either, create a new shift and distribute only its new links.</p>{claimLinks.map((link) => <article key={link.recipientSlot}><strong>{labels.recipients[String(link.recipientSlot)] || `Anonymous slot ${link.recipientSlot}`}</strong>{claimQrs[link.recipientSlot] && <img src={claimQrs[link.recipientSlot]} alt={`Private QR for recipient ${link.recipientSlot}`} />}<a href={link.url}>{link.url}</a></article>)}</div>}
+    </>}
     </>}
     {message && <p className="admin-message">{message}</p>}
   </section></main>
