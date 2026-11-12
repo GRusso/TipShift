@@ -1,6 +1,7 @@
 import { createClient, type Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
 import { toDataURL } from 'qrcode'
+import { EmployeesPanel } from './employees'
 import { loadPrivateLabels, savePrivateLabels, type PrivateLabels } from './private-labels'
 import { attachPrivateManifest, buildPrivateTurnManifest, sealPrivateManifest } from './private-manifest'
 
@@ -41,7 +42,7 @@ function configuredClient() {
 
 // One client for the whole page. A per-render client (useMemo) is created twice in React
 // StrictMode and the two instances race to consume the sign-in token in the URL.
-const adminClient = configuredClient()
+export const adminClient = configuredClient()
 // Read any sign-in link error before the Auth client removes the URL fragment.
 // Private claim links cannot be rebuilt from the server (it keeps only SHA-256 hashes), so the
 // issuing browser keeps them until the shift ends, e.g. for a late employee. They are scoped to
@@ -60,9 +61,9 @@ function readSavedShifts(): SavedShift[] {
 function writeSavedShifts(shifts: SavedShift[]) {
   try { window.localStorage.setItem(SHIFTS_KEY, JSON.stringify(shifts)) } catch { /* storage unavailable */ }
 }
-const AUTH_EVENT_KEY = 'tipshift-auth-last-event'
-const previousAuthEvent = (() => { try { return window.localStorage.getItem(AUTH_EVENT_KEY) } catch { return null } })()
-const signInLinkError = new URLSearchParams(window.location.hash.slice(1)).get('error_description')?.replace(/\+/g, ' ') ?? null
+export const AUTH_EVENT_KEY = 'tipshift-auth-last-event'
+export const previousAuthEvent = (() => { try { return window.localStorage.getItem(AUTH_EVENT_KEY) } catch { return null } })()
+export const signInLinkError = new URLSearchParams(window.location.hash.slice(1)).get('error_description')?.replace(/\+/g, ' ') ?? null
 
 function updateAt<T>(items: T[], index: number, value: T) {
   return items.map((item, current) => current === index ? value : item)
@@ -94,7 +95,7 @@ export function AdminTurnCreator() {
   const [organizationNameInput, setOrganizationNameInput] = useState('')
   const [view, setView] = useState<'master' | 'branch'>('master')
   const [savedShifts, setSavedShifts] = useState<SavedShift[]>(readSavedShifts)
-  const [branchTab, setBranchTab] = useState<'schedule' | 'shift'>('schedule')
+  const [branchTab, setBranchTab] = useState<'schedule' | 'shift' | 'employees'>('schedule')
   const [schedule, setSchedule] = useState<ScheduleBlock[]>([])
   const [savedSchedule, setSavedSchedule] = useState<ScheduleBlock[]>([])
   const [blockChoice, setBlockChoice] = useState('')
@@ -434,8 +435,8 @@ export function AdminTurnCreator() {
     </> : <>
     <p className="admin-message">{branchScopes.length ? 'Everything here belongs to a single branch: its weekly schedule, its groups and its private links.' : 'No branch is available for this account.'}</p>
     {branchScopes.length > 1 ? <div className="admin-grid"><label>Branch<select disabled={configLocked} value={selectedBranchRef} onChange={(event) => setSelectedBranchRef(event.target.value)}>{branchScopes.map((scope) => <option key={scope.branch_ref} value={scope.branch_ref}>{scope.branch_label}</option>)}</select></label></div> : branchScopes.length === 1 ? <h2>{branchScopes[0].branch_label}</h2> : null}
-    <div className="actions"><button className={branchTab === 'schedule' ? 'primary' : 'secondary'} onClick={() => setBranchTab('schedule')}>Weekly schedule</button><button className={branchTab === 'shift' ? 'primary' : 'secondary'} onClick={() => setBranchTab('shift')}>Shift &amp; private links</button></div>
-    {branchTab === 'schedule' ? <>
+    <div className="actions"><button className={branchTab === 'schedule' ? 'primary' : 'secondary'} onClick={() => setBranchTab('schedule')}>Weekly schedule</button><button className={branchTab === 'shift' ? 'primary' : 'secondary'} onClick={() => setBranchTab('shift')}>Shift &amp; private links</button><button className={branchTab === 'employees' ? 'primary' : 'secondary'} onClick={() => setBranchTab('employees')}>Employees</button></div>
+    {branchTab === 'employees' ? (client && session && selectedBranchRef ? <EmployeesPanel client={client} userId={session.user.id} venueRef={branchScopes.find((scope) => scope.branch_ref === selectedBranchRef)?.venue_ref ?? ''} branchRef={selectedBranchRef} /> : <p className="admin-message">Choose a branch first.</p>) : branchTab === 'schedule' ? <>
       <p className="admin-message">Define when this branch works, Monday to Sunday. A block that ends earlier than it starts continues past midnight (for example 20:00 to 02:00).</p>
       {DAYS.map((day, dayIndex) => <div key={day}>
         <h2>{day}</h2>

@@ -2,6 +2,7 @@ import { JsonRpcProvider } from 'npm:near-api-js@7.4.0'
 import { verifyMessage } from 'npm:near-api-js@7.4.0/nep413'
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4'
 import { buildAdminTurnRequest } from './admin-turn-request.mjs'
+import { buildAdminGroupTurnRequest } from './admin-group-turn-request.mjs'
 
 const encoder = new TextEncoder()
 const MAX_BODY_BYTES = 4_096
@@ -308,6 +309,148 @@ async function handleAdminRegisterBranch(request: Request, payload: Record<strin
   return { status: 201, payload: { branch: data[0] } }
 }
 
+function registrationStatement(branchRef: string) {
+  return `TipShift employee registration for branch ${branchRef}. This signature proves control of this NEAR account, which will receive your tips.`
+}
+
+// Employee registration: public (the link is the capability), two steps like a claim.
+async function handleRegistration(action: 'register_start' | 'register_complete', payload: Record<string, unknown>) {
+  const { service } = clients()
+  const capabilityHash = bytea(await sha256(requiredText(payload.token, 'token', 256)))
+  if (action === 'register_start') {
+    const nonce = crypto.getRandomValues(new Uint8Array(32))
+    const { data, error } = await service.rpc('tipshift_registration_start', { p_capability_hash: capabilityHash, p_nonce: bytea(nonce) })
+    if (error || !Array.isArray(data) || data.length !== 1) return null
+    return {
+      branchLabel: data[0].branch_label,
+      nonce: base64url(nonce),
+      message: registrationStatement(data[0].branch_ref),
+      recipient: requiredEnvironment('TIPSHIFT_NEP413_RECIPIENT'),
+      branchRef: data[0].branch_ref,
+    }
+  }
+  const accountId = requiredText(payload.accountId, 'accountId', 128)
+  const publicKey = requiredText(payload.publicKey, 'publicKey', 256)
+  const signature = base64(payload.signature, 'signature')
+  const nonce = base64(payload.nonce, 'nonce', true)
+  const initials = requiredText(payload.initials, 'initials', 4)
+  const branchRef = requiredUuid(payload.branchRef, 'branchRef')
+  if (nonce.byteLength !== 32) return null
+  const provider = new JsonRpcProvider({ url: requiredEnvironment('TIPSHIFT_NEAR_RPC_URL') })
+  await assertFullAccess(provider, accountId, publicKey)
+  await verifyMessage({ signerAccountId: accountId, signerPublicKey: publicKey, payload: { message: registrationStatement(branchRef), nonce, recipient: requiredEnvironment('TIPSHIFT_NEP413_RECIPIENT') }, signature, provider })
+  const scope = `branch:${branchRef}`
+  const { data, error } = await service.rpc('tipshift_registration_complete', {
+    p_capability_hash: capabilityHash,
+    p_nonce: bytea(nonce),
+    p_initials: initials,
+    p_wallet_commitment: bytea(await walletCommitment(scope, accountId)),
+    p_wallet_ciphertext: bytea(await sealWallet(scope, accountId)),
+  })
+  if (error || !Array.isArray(data) || data.length !== 1) return null
+  return { employee: { initials: data[0].initials, branchLabel: data[0].branch_label } }
+}
+
+async function handleAdminSetRegistrationLink(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const venueRef = requiredUuid(payload.venueRef, 'venueRef')
+  const branchRef = requiredUuid(payload.branchRef, 'branchRef')
+  // The manager's browser generates the link secret; only its hash is stored here.
+  const token = requiredText(payload.token, 'token', 256)
+  if (!/^[A-Za-z0-9_-]{32,256}$/.test(token)) return { status: 400, payload: { error: 'link_invalid' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_set_registration_link', {
+    p_admin_user_id: principal.userId,
+    p_venue_ref: venueRef,
+    p_branch_ref: branchRef,
+    p_capability_hash: bytea(await sha256(token)),
+  })
+  return error || data !== true ? { status: 409, payload: { error: 'link_unavailable' } } : { status: 200, payload: { saved: true } }
+}
+
+async function handleAdminBranchEmployees(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const branchRef = requiredUuid(payload.branchRef, 'branchRef')
+  const { data, error } = await principal.service.rpc('tipshift_admin_branch_employees', { p_admin_user_id: principal.userId, p_branch_ref: branchRef })
+  if (error || !Array.isArray(data)) return { status: 503, payload: { error: 'admin_unavailable' } }
+  return { status: 200, payload: { employees: data } }
+}
+
+function checkinStatement(turnRef: string, groupRef: string) {
+  return `TipShift shift check-in for turn ${turnRef} and group ${groupRef}. This signature proves control of this NEAR account and that you are present for this shift.`
+}
+
+// Employee check-in with the group's QR: two steps, like registration. The wallet must already
+// be registered in the shift's branch; the database decides the outcome (ok / full / ...).
+async function handleCheckin(action: 'checkin_start' | 'checkin_complete', payload: Record<string, unknown>) {
+  const { service } = clients()
+  const capabilityHash = bytea(await sha256(requiredText(payload.token, 'token', 256)))
+  if (action === 'checkin_start') {
+    const nonce = crypto.getRandomValues(new Uint8Array(32))
+    const { data, error } = await service.rpc('tipshift_checkin_start', { p_capability_hash: capabilityHash, p_nonce: bytea(nonce) })
+    if (error || !Array.isArray(data) || data.length !== 1) return null
+    const row = data[0]
+    return {
+      turnRef: row.turn_ref, groupRef: row.group_ref, branchRef: row.branch_ref, branchLabel: row.branch_label,
+      capacity: row.capacity, taken: Number(row.taken), scheduledStartsAt: row.scheduled_starts_at, scheduledEndsAt: row.scheduled_ends_at,
+      nonce: base64url(nonce),
+      message: checkinStatement(row.turn_ref, row.group_ref),
+      recipient: requiredEnvironment('TIPSHIFT_NEP413_RECIPIENT'),
+    }
+  }
+  const accountId = requiredText(payload.accountId, 'accountId', 128)
+  const publicKey = requiredText(payload.publicKey, 'publicKey', 256)
+  const signature = base64(payload.signature, 'signature')
+  const nonce = base64(payload.nonce, 'nonce', true)
+  const turnRef = requiredUuid(payload.turnRef, 'turnRef')
+  const groupRef = requiredUuid(payload.groupRef, 'groupRef')
+  const branchRef = requiredUuid(payload.branchRef, 'branchRef')
+  if (nonce.byteLength !== 32) return null
+  const provider = new JsonRpcProvider({ url: requiredEnvironment('TIPSHIFT_NEAR_RPC_URL') })
+  await assertFullAccess(provider, accountId, publicKey)
+  await verifyMessage({ signerAccountId: accountId, signerPublicKey: publicKey, payload: { message: checkinStatement(turnRef, groupRef), nonce, recipient: requiredEnvironment('TIPSHIFT_NEP413_RECIPIENT') }, signature, provider })
+  // Same commitment scope as registration, so the wallet is matched to its registered employee.
+  const { data, error } = await service.rpc('tipshift_checkin_complete', {
+    p_capability_hash: capabilityHash,
+    p_nonce: bytea(nonce),
+    p_wallet_commitment: bytea(await walletCommitment(`branch:${branchRef}`, accountId)),
+  })
+  if (error || !Array.isArray(data) || data.length !== 1) return null
+  return { status: data[0].status, initials: data[0].initials ?? null }
+}
+
+async function handleAdminCreateGroupTurn(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const appUrl = Deno.env.get('TIPSHIFT_PUBLIC_APP_URL')?.trim() || requiredEnvironment('TIPSHIFT_ALLOWED_ORIGIN')
+  const turn = await buildAdminGroupTurnRequest(payload, { appUrl })
+  const { data: turnRef, error } = await principal.service.rpc('tipshift_admin_create_group_turn', { p_admin_user_id: principal.userId, ...turn.rpcArgs })
+  if (error || !turnRef) return { status: 409, payload: { error: 'turn_unavailable' } }
+  return { status: 201, payload: { turnRef, checkinLinks: turn.checkinLinks } }
+}
+
+async function handleAdminGroupCheckins(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const turnRef = requiredUuid(payload.turnRef, 'turnRef')
+  const { data, error } = await principal.service.rpc('tipshift_admin_group_checkins', { p_admin_user_id: principal.userId, p_turn_ref: turnRef })
+  if (error || !Array.isArray(data)) return { status: 503, payload: { error: 'admin_unavailable' } }
+  return { status: 200, payload: { checkins: data } }
+}
+
+async function handleAdminReservePlace(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_reserve_place', {
+    p_admin_user_id: principal.userId,
+    p_turn_ref: requiredUuid(payload.turnRef, 'turnRef'),
+    p_group_ref: requiredUuid(payload.groupRef, 'groupRef'),
+    p_employee_id: requiredUuid(payload.employeeId, 'employeeId'),
+  })
+  return error || data !== true ? { status: 409, payload: { error: 'place_unavailable' } } : { status: 200, payload: { reserved: true } }
+}
+
 Deno.serve(async (request) => {
   let cors: Record<string, string>
   try {
@@ -352,6 +495,34 @@ Deno.serve(async (request) => {
     if (action === 'admin_register_branch') {
       const result = await handleAdminRegisterBranch(request, payload)
       return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_create_group_turn') {
+      const result = await handleAdminCreateGroupTurn(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_group_checkins') {
+      const result = await handleAdminGroupCheckins(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_reserve_place') {
+      const result = await handleAdminReservePlace(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'checkin_start' || action === 'checkin_complete') {
+      const result = await handleCheckin(action, payload)
+      return result ? json(result, 200, cors) : json({ error: 'checkin_unavailable' }, 404, cors)
+    }
+    if (action === 'admin_set_registration_link') {
+      const result = await handleAdminSetRegistrationLink(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_branch_employees') {
+      const result = await handleAdminBranchEmployees(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'register_start' || action === 'register_complete') {
+      const result = await handleRegistration(action, payload)
+      return result ? json(result, 200, cors) : json({ error: 'registration_unavailable' }, 404, cors)
     }
     if (action === 'admin_turn_status' || action === 'admin_start_turn') {
       const result = await handleAdminTurn(request, payload, action)
