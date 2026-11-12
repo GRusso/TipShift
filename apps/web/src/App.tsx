@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './testnet.css'
+import { useTheme } from './theme'
 // @ts-expect-error The deterministic core intentionally remains dependency-free JavaScript.
 import { TipShiftVault } from '../../../src/core/tipshift-vault.mjs'
 import { DEMO_ADMIN_ID, DEMO_POOL_ID, TOKEN_ACCOUNT_ID, VAULT_ACCOUNT_ID, connectTestnetWallet, explorerTransaction, openPaymentSession, payTip, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from './near'
@@ -70,7 +71,8 @@ function usdc(value: bigint) { return 'USDC ' + (Number(value) / 1_000_000).toFi
 
 export function App() {
   const [language, setLanguage] = useState<Language>('en')
-  const [night, setNight] = useState(false)
+  const { theme, toggleTheme } = useTheme()
+  const night = theme === 'dark'
   const [screen, setScreen] = useState<Screen>('allocation')
   const [vault, setVault] = useState(createVault)
   const [revision, setRevision] = useState(0)
@@ -93,7 +95,7 @@ export function App() {
   return <main className={night ? 'app night' : 'app'}>
     <div className="ribbon">{isTestnet ? copy.testnetRibbon : copy.ribbon}</div><div className="container">
       <header><div className="brand"><span>T</span><strong>tipshift</strong><small>{copy.admin}</small></div><div className="controls">
-        <button onClick={() => setLanguage(language === 'en' ? 'es' : 'en')}>{language === 'en' ? 'ES' : 'EN'}</button><button onClick={() => setNight(!night)}>{night ? '☀' : '☾'}</button>{!isTestnet && <button onClick={reset}>{copy.reset}</button>}
+        <button onClick={() => setLanguage(language === 'en' ? 'es' : 'en')}>{language === 'en' ? 'ES' : 'EN'}</button><button onClick={toggleTheme}>{night ? '☀' : '☾'}</button>{!isTestnet && <button onClick={reset}>{copy.reset}</button>}
       </div></header>
       <section className="hero"><p className="eyebrow">{isTestnet ? copy.testnetRibbon : 'TIPSHIFT · FUNCTIONAL ENGINE DEMO'}</p><h1>{copy.title}</h1><p>{isTestnet ? copy.testnetLead : copy.lead}</p></section>
       <nav className="flow">{(['allocation', 'launch', 'customer', 'recipient', 'testnet'] as Screen[]).map((item, index) => <button key={item} className={screen === item ? 'selected' : ''} onClick={() => setScreen(item)}>{index + 1}. {copy[item]}</button>)}</nav>

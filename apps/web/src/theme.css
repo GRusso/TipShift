@@ -1,0 +1,26 @@
+/* Global day / night theme. Night uses a soft, low-glare palette (no pure black / pure white). */
+.theme-toggle{position:fixed;top:14px;right:14px;z-index:10;width:40px;height:40px;border-radius:50%;border:1px solid #cbd9d1;background:#fff;color:#10251f;font-size:18px;line-height:1;cursor:pointer}
+:root[data-theme="dark"]{color-scheme:dark;background:#0e1815;color:#d3e2da}
+[data-theme="dark"] body{background:#0e1815;color:#d3e2da}
+[data-theme="dark"] .theme-toggle{border-color:#2c443b;background:#16241f;color:#e6d9a8}
+/* Private admin / claim screens */
+[data-theme="dark"] .private-admin{background:#0e1815}
+[data-theme="dark"] .private-admin>section{background:#14221d;border-color:#263b33;box-shadow:none}
+[data-theme="dark"] .private-admin label{color:#9bb2a7}
+[data-theme="dark"] .private-admin input,[data-theme="dark"] .private-admin select{background:#0e1815;border-color:#2c443b;color:#d3e2da}
+[data-theme="dark"] .private-admin input::placeholder{color:#5f776c}
+[data-theme="dark"] .admin-row{border-color:#263b33}
+[data-theme="dark"] .admin-row code{background:#0e1815;color:#b7cbc1}
+[data-theme="dark"] .admin-message{background:#17302a;color:#9ad9b4}
+[data-theme="dark"] .secondary,[data-theme="dark"] .controls button,[data-theme="dark"] .flow button{border-color:#2c443b;color:#d3e2da}
+[data-theme="dark"] .eyebrow{color:#7fb59d}
+[data-theme="dark"] .claim-links{background:#0b1411;border:1px solid #263b33}
+[data-theme="dark"] .claim-links article{background:#14221d}
+/* Main demo app (it already styles .night; soften it and cover the gaps) */
+[data-theme="dark"] .app.night{background:#0e1815;color:#d3e2da}
+[data-theme="dark"] .night .panel{background:#14221d;border-color:#263b33;box-shadow:none}
+[data-theme="dark"] .night .engine-status span,[data-theme="dark"] .night .testnet-meta span,[data-theme="dark"] .night .testnet-grid>div{background:#14221d}
+[data-theme="dark"] .night .flow .selected,[data-theme="dark"] .night .checklist,[data-theme="dark"] .night .payouts,[data-theme="dark"] .night .rows b{background:#17302a;color:#9ad9b4}
+[data-theme="dark"] .night .primary{background:#a9d86a}
+[data-theme="dark"] .night .brand small,[data-theme="dark"] .night .hero>p:last-child,[data-theme="dark"] .night .description{color:#8ba399}
+[data-theme="dark"] .night .error{background:#2a1a18;border-color:#6b3b35;color:#e9a9a1}
