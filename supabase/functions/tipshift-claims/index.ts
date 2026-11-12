@@ -120,7 +120,7 @@ async function authenticatedAdmin(request: Request) {
   // Validate the caller's JWT against the Auth server via the service client.
   const { data, error } = await service.auth.getUser(token)
   if (error || !data.user?.id) return null
-  return { service, userId: data.user.id }
+  return { service, userId: data.user.id, email: data.user.email ?? null }
 }
 
 async function assertFullAccess(provider: JsonRpcProvider, accountId: string, publicKey: string) {
@@ -202,9 +202,48 @@ async function handleAdminTurn(request: Request, payload: Record<string, unknown
 async function handleAdminScopes(request: Request) {
   const principal = await authenticatedAdmin(request)
   if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  // A pending invitation for this verified e-mail becomes the manager's branch authorization.
+  if (principal.email) await principal.service.rpc('tipshift_admin_claim_invitations', { p_user_id: principal.userId, p_email: principal.email })
   const { data, error } = await principal.service.rpc('tipshift_admin_scopes', { p_admin_user_id: principal.userId })
   if (error || !Array.isArray(data)) return { status: 503, payload: { error: 'admin_unavailable' } }
   return { status: 200, payload: { scopes: data } }
+}
+
+async function handleAdminInviteManager(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const venueRef = requiredUuid(payload.venueRef, 'venueRef')
+  const branchRef = requiredUuid(payload.branchRef, 'branchRef')
+  const email = requiredText(payload.email, 'email', 254).toLowerCase()
+  const { data, error } = await principal.service.rpc('tipshift_admin_invite_manager', {
+    p_admin_user_id: principal.userId,
+    p_venue_ref: venueRef,
+    p_branch_ref: branchRef,
+    p_email: email,
+  })
+  if (error || !Array.isArray(data) || data.length !== 1) return { status: 409, payload: { error: 'invitation_unavailable' } }
+  return { status: 201, payload: { invitation: data[0] } }
+}
+
+async function handleAdminRevokeManager(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const invitationId = requiredUuid(payload.invitationId, 'invitationId')
+  const { data, error } = await principal.service.rpc('tipshift_admin_revoke_manager', {
+    p_admin_user_id: principal.userId,
+    p_invitation_id: invitationId,
+  })
+  if (error || !Array.isArray(data) || data.length !== 1) return { status: 409, payload: { error: 'invitation_unavailable' } }
+  return { status: 200, payload: { invitation: data[0] } }
+}
+
+async function handleAdminManagerInvitations(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const venueRef = requiredUuid(payload.venueRef, 'venueRef')
+  const { data, error } = await principal.service.rpc('tipshift_admin_manager_invitations', { p_admin_user_id: principal.userId, p_venue_ref: venueRef })
+  if (error || !Array.isArray(data)) return { status: 503, payload: { error: 'admin_unavailable' } }
+  return { status: 200, payload: { invitations: data } }
 }
 
 async function handleAdminSetOrganization(request: Request, payload: Record<string, unknown>) {
@@ -256,6 +295,18 @@ Deno.serve(async (request) => {
     const action = requiredText(payload.action, 'action', 32)
     if (action === 'admin_scopes') {
       const result = await handleAdminScopes(request)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_invite_manager') {
+      const result = await handleAdminInviteManager(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_revoke_manager') {
+      const result = await handleAdminRevokeManager(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_manager_invitations') {
+      const result = await handleAdminManagerInvitations(request, payload)
       return json(result.payload, result.status, cors)
     }
     if (action === 'admin_set_organization') {
