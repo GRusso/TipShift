@@ -43,6 +43,23 @@ function configuredClient() {
 // StrictMode and the two instances race to consume the sign-in token in the URL.
 const adminClient = configuredClient()
 // Read any sign-in link error before the Auth client removes the URL fragment.
+// Private claim links cannot be rebuilt from the server (it keeps only SHA-256 hashes), so the
+// issuing browser keeps them until the shift ends, e.g. for a late employee. They are scoped to
+// the signed-in user and removed automatically once the shift is over.
+const SHIFTS_KEY = 'tipshift-active-shifts'
+type SavedShift = { userId: string; turnRef: string; branchRef: string; branchLabel: string; startsAt: string; endsAt: string; links: ClaimLink[] }
+function readSavedShifts(): SavedShift[] {
+  try {
+    const raw: unknown = JSON.parse(window.localStorage.getItem(SHIFTS_KEY) ?? '[]')
+    if (!Array.isArray(raw)) return []
+    const alive = raw.filter((shift): shift is SavedShift => Boolean(shift) && typeof shift.userId === 'string' && typeof shift.turnRef === 'string' && typeof shift.branchRef === 'string' && typeof shift.branchLabel === 'string' && typeof shift.endsAt === 'string' && Date.parse(shift.endsAt) > Date.now() && Array.isArray(shift.links))
+    if (alive.length !== raw.length) window.localStorage.setItem(SHIFTS_KEY, JSON.stringify(alive))
+    return alive
+  } catch { return [] }
+}
+function writeSavedShifts(shifts: SavedShift[]) {
+  try { window.localStorage.setItem(SHIFTS_KEY, JSON.stringify(shifts)) } catch { /* storage unavailable */ }
+}
 const AUTH_EVENT_KEY = 'tipshift-auth-last-event'
 const previousAuthEvent = (() => { try { return window.localStorage.getItem(AUTH_EVENT_KEY) } catch { return null } })()
 const signInLinkError = new URLSearchParams(window.location.hash.slice(1)).get('error_description')?.replace(/\+/g, ' ') ?? null
@@ -76,6 +93,7 @@ export function AdminTurnCreator() {
   const [newBranchAddress, setNewBranchAddress] = useState('')
   const [organizationNameInput, setOrganizationNameInput] = useState('')
   const [view, setView] = useState<'master' | 'branch'>('master')
+  const [savedShifts, setSavedShifts] = useState<SavedShift[]>(readSavedShifts)
   const [branchTab, setBranchTab] = useState<'schedule' | 'shift'>('schedule')
   const [schedule, setSchedule] = useState<ScheduleBlock[]>([])
   const [savedSchedule, setSavedSchedule] = useState<ScheduleBlock[]>([])
@@ -239,18 +257,34 @@ export function AdminTurnCreator() {
       setMessage('Turn was not created. Confirm your organization and branch scope, then review the slot distribution.')
       return
     }
-    setClaimLinks(result.claimLinks.map((link) => ({ ...link, url: attachPrivateManifest(link.url, privateManifest) })))
+    const fullLinks = result.claimLinks.map((link) => ({ ...link, url: attachPrivateManifest(link.url, privateManifest) }))
+    setClaimLinks(fullLinks)
     setTurnRef(result.turnRef ?? null)
+    if (result.turnRef) {
+      const kept = [...readSavedShifts().filter((shift) => shift.turnRef !== result.turnRef), { userId: session.user.id, turnRef: result.turnRef, branchRef: scope.branch_ref, branchLabel: scope.branch_label ?? '', startsAt: start.toISOString(), endsAt: end.toISOString(), links: fullLinks }]
+      writeSavedShifts(kept); setSavedShifts(kept)
+    }
     setTurnStatus(result.turnRef ? { turnRef: result.turnRef, state: 'claiming', recipientCount: result.claimLinks.length, verifiedCount: 0, scheduledStartsAt: start.toISOString(), scheduledEndsAt: end.toISOString() } : null)
     setMessage(`Private shift created: ${String(result.turnRef)}`)
   }
 
-  const refreshTurnStatus = async () => {
-    if (!client || !turnRef) return
-    const { data, error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_turn_status', turnRef } })
+  const refreshTurnStatus = async (ref: string | null = turnRef) => {
+    if (!client || !ref) return
+    const { data, error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_turn_status', turnRef: ref } })
     const result = data as { turn?: TurnStatus } | null
     if (!error && result?.turn) setTurnStatus(result.turn)
   }
+  const showSavedShift = async (shift: SavedShift) => {
+    setClaimLinks(shift.links); setTurnRef(shift.turnRef); setTurnStatus(null); setMessage(null)
+    await refreshTurnStatus(shift.turnRef)
+  }
+  const forgetSavedShift = (turnRefToForget: string) => {
+    const kept = readSavedShifts().filter((shift) => shift.turnRef !== turnRefToForget)
+    writeSavedShifts(kept); setSavedShifts(kept)
+    if (turnRef === turnRefToForget) { setClaimLinks([]); setClaimQrs({}); setTurnRef(null); setTurnStatus(null) }
+  }
+  const closeShiftView = () => { setClaimLinks([]); setClaimQrs({}); setTurnRef(null); setTurnStatus(null); setMessage(null) }
+
   const startTurn = async () => {
     if (!client || !turnRef) return
     setBusy(true); const { error } = await client.functions.invoke('tipshift-claims', { body: { action: 'admin_start_turn', turnRef } }); setBusy(false)
@@ -418,6 +452,12 @@ export function AdminTurnCreator() {
       <p className="admin-message">Set and save the weekly schedule first. Shifts are created from its blocks.</p>
       <div className="actions"><button className="secondary" onClick={() => setBranchTab('schedule')}>Go to weekly schedule</button></div>
     </> : <>
+      {session && savedShifts.filter((shift) => shift.userId === session.user.id && shift.branchRef === selectedBranchRef).length > 0 && <>
+        <h2>Shifts with active QR codes</h2>
+        <p className="admin-message">These QR codes are kept only in this browser and are removed automatically when the shift ends. A late employee can still register until you start collection.</p>
+        {savedShifts.filter((shift) => shift.userId === session.user.id && shift.branchRef === selectedBranchRef).map((shift) => <div className="admin-row" key={shift.turnRef}><label>{new Date(shift.startsAt).toLocaleString()} → {new Date(shift.endsAt).toLocaleTimeString()}<code>{shift.links.length} QR codes{turnRef === shift.turnRef ? ' · shown below' : ''}</code></label><button className="secondary" disabled={busy} onClick={() => void showSavedShift(shift)}>Show QR codes</button><button className="secondary" onClick={() => forgetSavedShift(shift.turnRef)}>Forget</button></div>)}
+      </>}
+      {turnRef && <div className="actions"><button className="secondary" onClick={closeShiftView}>Create another shift</button></div>}
       <div className="admin-grid">
         <label>Shift (from the weekly schedule)<select disabled={configLocked} value={blockChoice} onChange={(event) => setBlockChoice(event.target.value)}><option value="">Choose a block</option>{savedSchedule.map((block, index) => <option key={index} value={String(index)}>{DAYS[block.weekday - 1].slice(0, 3)} {block.startsAt}–{block.endsAt}{block.label ? ` · ${block.label}` : ''}</option>)}</select></label>
         <label>Date<input disabled={configLocked || blockChoice === ''} type="date" value={shiftDate} onChange={(event) => setShiftDate(event.target.value)} /></label>

@@ -34,7 +34,8 @@ test('creates opaque fragment links while only placing SHA-256 hashes in the RPC
   assert.equal(result.rpcArgs.p_claims[0].capabilityHash.length, 64)
   assert.doesNotMatch(JSON.stringify(result.rpcArgs), /#claim=|Bw{8}/)
   assert.equal(result.rpcArgs.p_groups[0].shareBps, 10_000)
-  assert.equal(result.rpcArgs.p_claim_window_ends_at, nextWeek)
+  assert.equal(result.rpcArgs.p_claim_window_ends_at, endOfShift)
+  assert.equal(result.rpcArgs.p_claims[0].expiresAt, endOfShift)
   assert.equal(result.rpcArgs.p_scheduled_ends_at, endOfShift)
 })
 
@@ -60,4 +61,20 @@ test('keeps the deployed legacy admin UI working until it sends a scheduled wind
   const result = await buildAdminTurnRequest(legacy, { appUrl: 'https://tipshift.example', now })
   assert.equal(result.rpcArgs.p_claim_window_ends_at, nextWeek)
   assert.equal('p_scheduled_starts_at' in result.rpcArgs, false)
+})
+
+test('accepts a shift that already began (late set-up) but not one that already ended', async () => {
+  const running = request()
+  running.scheduledStartsAt = '2026-11-11T12:00:00.000Z'
+  running.scheduledEndsAt = '2026-11-11T20:00:00.000Z'
+  const ok = await buildAdminTurnRequest(running, { appUrl: 'https://tipshift.example', now })
+  assert.equal(ok.rpcArgs.p_claim_window_ends_at, '2026-11-11T20:00:00.000Z')
+  const ended = request()
+  ended.scheduledStartsAt = '2026-11-11T08:00:00.000Z'
+  ended.scheduledEndsAt = '2026-11-11T14:00:00.000Z'
+  await assert.rejects(buildAdminTurnRequest(ended, { appUrl: 'https://tipshift.example', now }))
+  const stale = request()
+  stale.scheduledStartsAt = '2026-11-09T12:00:00.000Z'
+  stale.scheduledEndsAt = '2026-11-11T16:00:00.000Z'
+  await assert.rejects(buildAdminTurnRequest(stale, { appUrl: 'https://tipshift.example', now }))
 })

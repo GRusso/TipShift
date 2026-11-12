@@ -26,10 +26,13 @@ async function hashHex(value) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-function timestamp(value, now) {
+// A shift may already have begun (late set-up), so its start can be up to 24 h in the past;
+// its end must always be in the future.
+function timestamp(value, now, allowPast = false) {
   if (typeof value !== 'string') invalid()
   const parsed = new Date(value)
-  if (!Number.isFinite(parsed.getTime()) || parsed <= now || parsed.getTime() > now.getTime() + 31 * 24 * 60 * 60 * 1000) invalid()
+  const earliest = allowPast ? now.getTime() - 24 * 60 * 60 * 1000 : now.getTime()
+  if (!Number.isFinite(parsed.getTime()) || parsed.getTime() <= earliest || parsed.getTime() > now.getTime() + 31 * 24 * 60 * 60 * 1000) invalid()
   return parsed.toISOString()
 }
 
@@ -47,9 +50,10 @@ export async function buildAdminTurnRequest(input, { appUrl, now = new Date(), r
   const branchRef = uuid(input.branchRef)
   const hasSchedule = input.scheduledStartsAt !== undefined || input.scheduledEndsAt !== undefined
   if (hasSchedule && (input.scheduledStartsAt === undefined || input.scheduledEndsAt === undefined)) invalid()
-  const scheduledStartsAt = hasSchedule ? timestamp(input.scheduledStartsAt, now) : null
+  const scheduledStartsAt = hasSchedule ? timestamp(input.scheduledStartsAt, now, true) : null
   const scheduledEndsAt = hasSchedule ? timestamp(input.scheduledEndsAt, now) : null
-  const claimWindowEndsAt = hasSchedule ? scheduledStartsAt : timestamp(input.claimWindowEndsAt, now)
+  // Claims stay open until the shift ends (or collection starts), so late arrivals can still register.
+  const claimWindowEndsAt = hasSchedule ? scheduledEndsAt : timestamp(input.claimWindowEndsAt, now)
   if (scheduledStartsAt && scheduledEndsAt && (new Date(scheduledEndsAt) <= new Date(scheduledStartsAt) || new Date(scheduledEndsAt).getTime() > new Date(scheduledStartsAt).getTime() + 24 * 60 * 60 * 1000)) invalid()
   if (!Array.isArray(input.groups) || input.groups.length < 1 || input.groups.length > 20) invalid()
   if (!Array.isArray(input.recipients) || input.recipients.length < 1 || input.recipients.length > 100) invalid()
