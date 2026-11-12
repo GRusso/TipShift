@@ -1,5 +1,5 @@
 import { createClient, type Session } from '@supabase/supabase-js'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toDataURL } from 'qrcode'
 import { loadPrivateLabels, savePrivateLabels, type PrivateLabels } from './private-labels'
 import { attachPrivateManifest, buildPrivateTurnManifest, sealPrivateManifest } from './private-manifest'
@@ -39,6 +39,12 @@ function configuredClient() {
   return url && key ? createClient(url, key, { auth: { persistSession: true, detectSessionInUrl: true } }) : null
 }
 
+// One client for the whole page. A per-render client (useMemo) is created twice in React
+// StrictMode and the two instances race to consume the sign-in token in the URL.
+const adminClient = configuredClient()
+// Read any sign-in link error before the Auth client removes the URL fragment.
+const signInLinkError = new URLSearchParams(window.location.hash.slice(1)).get('error_description')?.replace(/\+/g, ' ') ?? null
+
 function updateAt<T>(items: T[], index: number, value: T) {
   return items.map((item, current) => current === index ? value : item)
 }
@@ -58,7 +64,8 @@ function equalizeGroup(recipients: Recipient[], groupRef: string) {
 }
 
 export function AdminTurnCreator() {
-  const client = useMemo(configuredClient, [])
+  const client = adminClient
+  const [authReady, setAuthReady] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [email, setEmail] = useState('')
   const [scopes, setScopes] = useState<AdminScope[]>([])
@@ -91,8 +98,8 @@ export function AdminTurnCreator() {
 
   useEffect(() => {
     if (!client) return
-    void client.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: subscription } = client.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession))
+    void client.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true) })
+    const { data: subscription } = client.auth.onAuthStateChange((_event, nextSession) => { setSession(nextSession); setAuthReady(true) })
     return () => subscription.subscription.unsubscribe()
   }, [client])
 
@@ -346,7 +353,8 @@ export function AdminTurnCreator() {
   const setRecipientLabel = (slot: number, label: string) => setLabels((current) => ({ ...current, recipients: { ...current.recipients, [String(slot)]: label } }))
 
   if (!client) return <main className="private-admin"><section><p className="eyebrow">TIPSHIFT · PRIVATE ADMIN</p><h1>Configuration required</h1><p>This screen needs the public Supabase URL and anonymous key. It never accepts service-role credentials or recipient wallets.</p></section></main>
-  if (!session) return <main className="private-admin"><section><p className="eyebrow">TIPSHIFT · PRIVATE ADMIN</p><h1>Private shift access</h1><p>Only an authorized ClariaLabs session can create anonymous recipient slots and private claim links.</p><label>Work email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" /></label><button className="primary" disabled={busy || !email} onClick={() => void sendMagicLink()}>Send sign-in link</button>{message && <p className="admin-message">{message}</p>}</section></main>
+  if (!authReady) return <main className="private-admin"><section><p className="eyebrow">TIPSHIFT · PRIVATE ADMIN</p><h1>Signing in…</h1><p>Checking your private session.</p></section></main>
+  if (!session) return <main className="private-admin"><section><p className="eyebrow">TIPSHIFT · PRIVATE ADMIN</p><h1>Private shift access</h1>{signInLinkError && <p className="admin-message">That sign-in link was not accepted ({signInLinkError}). Request one new link and open it right away; each new request cancels the previous link.</p>}<p>Only an authorized ClariaLabs session can create anonymous recipient slots and private claim links.</p><label>Work email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" /></label><button className="primary" disabled={busy || !email} onClick={() => void sendMagicLink()}>Send sign-in link</button>{message && <p className="admin-message">{message}</p>}</section></main>
 
   const shareTotal = groups.reduce((total, group) => total + Number(group.shareBps), 0)
   const recipientPercentagesValid = groups.every((group) => recipients.filter((recipient) => recipient.groupRef === group.groupRef).reduce((total, recipient) => total + Number(recipient.shareWeight), 0) === PERCENT_SCALE)
