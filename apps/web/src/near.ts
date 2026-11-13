@@ -211,17 +211,52 @@ export async function closeAndDistributeDemo(onStep: (step: 'closing' | 'paying'
   if (pool.state !== 'paying') throw new Error(`The pool is in state "${pool.state}" and cannot be distributed.`)
 
   onStep('paying')
-  const transactions = Array.from({ length: pool.payout_count }, (_, index) => ({
+  const send = (index: number) => ({
     signerId: accountId,
     receiverId: VAULT_ACCOUNT_ID,
     actions: [call(actionCreators, 'dispatch_payout', { pool_id: DEMO_POOL_ID, payout_index: index }, 1n)],
-  }))
-  const outcomes = await wallet.signAndSendTransactions({ transactions })
-  const list = Array.isArray(outcomes) ? outcomes : []
-  lastHash = list.length ? transactionHash(list[list.length - 1]) : null
+  })
+  const indexes = Array.from({ length: pool.payout_count }, (_, index) => index)
+  if (pool.delivered_payout_count === 0) {
+    // Nothing paid yet: one approval covers every payout.
+    const outcomes = await wallet.signAndSendTransactions({ transactions: indexes.map(send) })
+    const list = Array.isArray(outcomes) ? outcomes : []
+    lastHash = list.length ? transactionHash(list[list.length - 1]) : null
+  } else {
+    // A retry: the contract does not say which payouts are done, and it rejects the paid ones. Try each alone.
+    for (const index of indexes) {
+      try {
+        const outcome = await wallet.signAndSendTransaction(send(index))
+        lastHash = transactionHash(outcome) ?? lastHash
+      } catch { /* already delivered or still failing; the final count tells which */ }
+    }
+  }
 
   onStep('confirming')
-  const done = await waitForPool((p) => p.state === 'distributed')
+  let done: PoolSummary
+  try {
+    done = await waitForPool((p) => p.state === 'distributed')
+  } catch {
+    const latest = await readDemoPool()
+    if (latest && latest.delivered_payout_count < latest.payout_count) throw new Error(`PARTIAL:${latest.delivered_payout_count}/${latest.payout_count}`)
+    throw new Error('The network has not confirmed the payouts yet. Refresh in a few seconds.')
+  }
   if (lastHash) { try { window.localStorage.setItem(DISTRIBUTION_KEY, lastHash) } catch { /* link is only a convenience */ } }
   return { pool: done, hash: lastHash }
+}
+
+/** A NEP-141 token only delivers to accounts that registered storage with it once. */
+export async function usdcRegistered(accountId: string) {
+  const balance = await viewCall<{ total: string } | null>(TOKEN_ACCOUNT_ID, 'storage_balance_of', { account_id: accountId })
+  return balance !== null
+}
+
+export async function registerUsdc(accountId: string) {
+  const { actionCreators } = await import('@near-js/transactions')
+  const { wallet } = await connectTestnetWallet({})
+  await wallet.signAndSendTransaction({
+    signerId: accountId,
+    receiverId: TOKEN_ACCOUNT_ID,
+    actions: [actionCreators.functionCall('storage_deposit', { account_id: accountId, registration_only: true }, 30_000_000_000_000n, 1_250_000_000_000_000_000_000n)],
+  })
 }
