@@ -47,8 +47,8 @@ const copy = {
     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     configTitle: 'Configuration required', configText: 'The public Supabase URL and key are missing.',
     signingIn: 'One moment…',
-    signInTitle: 'Sign in', signInLead: 'We’ll email you a link. No password.', email: 'Work email', send: 'Send link',
-    sent: 'Check your inbox.', sendFail: 'Couldn’t send the link. Try again.',
+    signInTitle: 'Sign in', signInLead: 'Use your email and a password. New here? Create an account.', email: 'Work email', password: 'Password (8+ characters)', send: 'Sign in', create: 'Create account',
+    sent: 'Check your inbox.', sendFail: 'Wrong email or password.', accountFail: 'Couldn’t create the account. Use 8+ characters.',
     linkError: (e: string) => `That link didn’t work (${e}). Request a new one and open it right away.`,
     signOut: 'Sign out', noScope: 'No location yet for this account.',
     company: 'Company', orgName: 'Company name', saveOrg: 'Save', edit: 'Edit', cancel: 'Cancel', orgFirst: 'Name your company first.',
@@ -74,8 +74,8 @@ const copy = {
     days: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
     configTitle: 'Falta configuración', configText: 'Faltan la URL pública de Supabase y la clave.',
     signingIn: 'Un momento…',
-    signInTitle: 'Ingresá', signInLead: 'Te mandamos un link por email. Sin contraseña.', email: 'Email de trabajo', send: 'Enviar link',
-    sent: 'Revisá tu correo.', sendFail: 'No se pudo enviar el link. Probá de nuevo.',
+    signInTitle: 'Ingresá', signInLead: 'Usá tu email y una contraseña. ¿Primera vez? Creá tu cuenta.', email: 'Email de trabajo', password: 'Contraseña (8+ caracteres)', send: 'Ingresar', create: 'Crear cuenta',
+    sent: 'Revisá tu correo.', sendFail: 'Email o contraseña incorrectos.', accountFail: 'No se pudo crear la cuenta. Usá 8+ caracteres.',
     linkError: (e: string) => `Ese link no funcionó (${e}). Pedí uno nuevo y abrilo enseguida.`,
     signOut: 'Salir', noScope: 'Esta cuenta todavía no tiene locales.',
     company: 'Empresa', orgName: 'Nombre de la empresa', saveOrg: 'Guardar', edit: 'Editar', cancel: 'Cancelar', orgFirst: 'Primero poné nombre a tu empresa.',
@@ -121,12 +121,12 @@ function SignIn() {
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
-  const send = async () => {
+  const [password, setPassword] = useState('')
+  const run = async (create: boolean) => {
     if (!adminClient) return
     setBusy(true); setMessage(null)
-    const redirect = new URL(window.location.href); redirect.search = '?admin=1'; redirect.hash = ''
-    const { error } = await adminClient.auth.signInWithOtp({ email, options: { emailRedirectTo: redirect.toString() } })
-    setBusy(false); setMessage(error ? c.sendFail : c.sent)
+    const { error } = create ? await adminClient.auth.signUp({ email, password }) : await adminClient.auth.signInWithPassword({ email, password })
+    setBusy(false); if (error) setMessage(create ? c.accountFail : c.sendFail)
   }
   return <PublicFrame ribbon={c.ribbon}><div className="ts-solo"><div className="ts-card">
     <p className="ts-eyebrow">TIPSHIFT</p>
@@ -135,8 +135,9 @@ function SignIn() {
     {signInLinkError && <div className="ts-notice bad" role="alert">{c.linkError(signInLinkError)}</div>}
     {!signInLinkError && previousAuthEvent && <div className="ts-notice">{previousAuthEvent}</div>}
     <label className="ts-field">{c.email}<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>
-    {message && <div className="ts-notice" role="status">{message}</div>}
-    <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !email} onClick={() => void send()}>{c.send}</button></div>
+    <label className="ts-field">{c.password}<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></label>
+    {message && <div className="ts-notice bad" role="alert">{message}</div>}
+    <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !email || password.length < 8} onClick={() => void run(false)}>{c.send}</button><button className="ts-btn" disabled={busy || !email || password.length < 8} onClick={() => void run(true)}>{c.create}</button></div>
   </div></div></PublicFrame>
 }
 

@@ -43,7 +43,7 @@ Server secrets (never in the repo): `TIPSHIFT_ALLOWED_ORIGINS`, `TIPSHIFT_PUBLIC
 ## Try the demo
 
 1. Open https://tipshift.pages.dev with a NEAR testnet wallet (Meteor, MyNearWallet, HERE or Nightly).
-2. **Manager console:** `#/console`. Sign in by email link, name the company, add a location.
+2. **Manager console:** `#/console`. Create an account with email and password, name the company, add a location.
 3. **Join link:** Console, Team tab. Open the link, enter initials, connect the wallet, then "Set up USDC" (NEP-145 storage deposit, needed to receive a NEP-141 token).
 4. **Shift:** Console, Shifts tab. Create a shift with groups and scan each group's QR to check in.
 5. **Customer QR:** Console, Customer QR tab. Scan it or open the link, pay with a wallet that holds test USDC (`usdc.fakes.testnet`).

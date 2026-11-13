@@ -205,6 +205,7 @@ async function handleAdminScopes(request: Request) {
   if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
   // A pending invitation for this verified e-mail becomes the manager's branch authorization.
   if (principal.email) await principal.service.rpc('tipshift_admin_claim_invitations', { p_user_id: principal.userId, p_email: principal.email })
+  await principal.service.rpc('tipshift_admin_bootstrap', { p_admin_user_id: principal.userId })
   const { data, error } = await principal.service.rpc('tipshift_admin_scopes', { p_admin_user_id: principal.userId })
   if (error || !Array.isArray(data)) return { status: 503, payload: { error: 'admin_unavailable' } }
   return { status: 200, payload: { scopes: data } }
