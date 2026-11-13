@@ -43,7 +43,7 @@ async function sign(client: PublicClient, purpose: string, noSig: string) {
   const challenge = await callTipshift<Challenge>(client, { action: 'report_start', ...(purpose === 'list' ? {} : { turnRef: purpose.split(' ')[1] }) })
   if (!challenge?.nonce) throw new Error('unavailable')
   const { wallet } = await connectTestnetWallet({})
-  const signed = await wallet.signMessage({ message: statement(purpose), recipient: challenge.recipient, nonce: Buffer.from(challenge.nonce, 'base64url'), callbackUrl: window.location.href })
+  const signed = await wallet.signMessage({ message: statement(purpose), recipient: challenge.recipient, nonce: Buffer.from(challenge.nonce, 'base64url') })
   if (!signed?.accountId || !signed.publicKey || !signed.signature) throw new Error(noSig)
   return { nonce: challenge.nonce, accountId: signed.accountId, publicKey: signed.publicKey, signature: signed.signature }
 }

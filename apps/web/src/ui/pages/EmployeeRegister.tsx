@@ -80,7 +80,7 @@ export function EmployeeRegister({ token }: { token: string }) {
       const proof = await callTipshift<Start>(client, { action: 'register_start', token })
       if (!proof?.nonce) throw new Error(c.unusable)
       const { wallet } = await connectTestnetWallet({})
-      const signed = await wallet.signMessage({ message: proof.message, recipient: proof.recipient, nonce: Buffer.from(proof.nonce, 'base64url'), callbackUrl: window.location.href })
+      const signed = await wallet.signMessage({ message: proof.message, recipient: proof.recipient, nonce: Buffer.from(proof.nonce, 'base64url') })
       if (!signed?.accountId || !signed.publicKey || !signed.signature) throw new Error(c.noSig)
       setMessage(c.verifying)
       const finished = await callTipshift<Done>(client, { action: 'register_complete', token, branchRef: proof.branchRef, nonce: proof.nonce, initials: initials.trim(), accountId: signed.accountId, publicKey: signed.publicKey, signature: signed.signature })
