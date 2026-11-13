@@ -1,6 +1,8 @@
 import type { Session } from '@supabase/supabase-js'
 import { useCallback, useEffect, useState } from 'react'
 import { toDataURL } from 'qrcode'
+import { disputeRows, effectiveShares, type Dispute } from '../dispute'
+import { DisputeList } from './Dispute'
 import { splitShiftTips } from '../../../../../src/core/group-split.mjs'
 import { downloadCsv } from '../csv'
 import { DEMO_ADMIN_ID, closeAndDistributeDemo, savedDistributionTx, connectTestnetWallet, explorerTransaction, openPaymentSession, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
@@ -534,7 +536,7 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
 
 type ReportPerson = { employeeId: string; initials: string; signed: boolean }
 type ReportGroup = { groupRef: string; label: string | null; shareBps: number; capacity: number; people: ReportPerson[] }
-type Report = { turnRef: string; startsAt: string; endsAt: string; distributionTx: string | null; groups: ReportGroup[] }
+type Report = { turnRef: string; startsAt: string; endsAt: string; distributionTx: string | null; groups: ReportGroup[]; disputes?: Dispute[] }
 
 function ReportTab({ branchLabel, branchRef, busy, setBusy, setNote }: TabProps & { branchLabel: string; branchRef: string }) {
   const c = useCopy(copy)
@@ -548,7 +550,7 @@ function ReportTab({ branchLabel, branchRef, busy, setBusy, setNote }: TabProps 
   useEffect(() => { void load() }, [load])
   const balance = pool ? BigInt(pool.balance) : 0n
   const hhmm = (v: string) => new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const split = (report: Report) => splitShiftTips({ balance, groups: report.groups.map((g) => ({ groupRef: g.groupRef, shareBps: g.shareBps, employeeIds: g.people.filter((p) => p.signed).map((p) => p.employeeId) })) })
+  const split = (report: Report) => splitShiftTips({ balance, groups: effectiveShares(report.groups, report.disputes).map((g) => ({ groupRef: g.groupRef, shareBps: g.shareBps, employeeIds: g.people.filter((p) => p.signed).map((p) => p.employeeId) })) })
   const label = (g: ReportGroup, i: number) => g.label || `${c.group} ${i + 1}`
 
   const download = (report: Report) => {
@@ -558,7 +560,15 @@ function ReportTab({ branchLabel, branchRef, busy, setBusy, setNote }: TabProps 
       const part = result.find((x) => x.groupRef === g.groupRef)
       for (const person of part?.people ?? []) rows.push([branchLabel, report.startsAt, report.endsAt, label(g, i), g.people.find((p) => p.employeeId === person.employeeId)?.initials ?? '', (Number(person.amount) / 1_000_000).toFixed(6)])
     })
+    rows.push(...disputeRows(report.disputes, (ref) => { const i = report.groups.findIndex((g) => g.groupRef === ref); return i < 0 ? '' : label(report.groups[i], i) }))
     downloadCsv(`tipshift-report-${report.startsAt.slice(0, 10)}.csv`, rows)
+  }
+  const propose = async (d: Dispute, shares: { groupRef: string; shareBps: number }[], note: string) => {
+    setBusy(true); setNote(null)
+    const r = await invoke({ action: 'admin_dispute_propose', disputeId: d.disputeId, shares, note })
+    setBusy(false)
+    if (!r) { setNote({ text: c.deleteFail, bad: true }); return }
+    await load()
   }
   const remove = async (report: Report) => {
     if (!window.confirm(c.confirmDelete)) return
@@ -588,6 +598,8 @@ function ReportTab({ branchLabel, branchRef, busy, setBusy, setNote }: TabProps 
             return <tr key={g.groupRef}><td><strong>{label(g, i)}</strong></td><td className="ts-mono">{present.length}</td><td className="ts-mono">{usdc(part?.amount ?? 0n)}</td><td>{present.length === 0 ? <span className="ts-muted">{c.nobody2}</span> : (part?.people ?? []).map((p) => <span key={p.employeeId} style={{ display: 'inline-flex', gap: 8, marginRight: 14 }}><span className="ts-avatar" style={{ width: 'auto', padding: '0 8px' }}>{present.find((x) => x.employeeId === p.employeeId)?.initials}</span><span className="ts-mono">{usdc(p.amount)}</span></span>)}</td></tr>
           })}
         </tbody></table></div>
+        {(report.disputes ?? []).length > 0 && <DisputeList disputes={report.disputes ?? []} busy={busy} onPropose={(d, shares, note) => void propose(d, shares, note)}
+          groups={report.groups.map((g, i) => ({ groupRef: g.groupRef, label: label(g, i), shareBps: g.shareBps }))} />}
         {report.distributionTx && <p style={{ marginTop: 12 }}><a href={explorerTransaction(report.distributionTx)} target="_blank" rel="noreferrer">{c.onchain}</a></p>}
       </div>
     })}

@@ -6,7 +6,7 @@ const copy = {
     ribbon: 'Testnet · Test funds only',
     back: 'Home', console: 'Manager sign-in', mine: 'My shifts',
     eyebrow: 'THE DEMO', title: 'A shift, start to finish.', lead: 'Seven steps. Each one is a real screen you can try.',
-    tryIt: 'Try it', soon: 'Coming soon', start: 'Set up a business',
+    tryIt: 'Try it', disputeOpen: 'Team is voting', start: 'Set up a business',
     steps: [
       { t: 'Create your company', p: 'Name your business and add its locations.' },
       { t: 'Plan a shift', p: 'Pick the hours, then split the tips between groups.' },
@@ -27,7 +27,7 @@ const copy = {
     ribbon: 'Testnet · Solo fondos de prueba',
     back: 'Inicio', console: 'Ingreso de gerentes', mine: 'Mis turnos',
     eyebrow: 'LA DEMO', title: 'Un turno, de principio a fin.', lead: 'Siete pasos. Cada uno es una pantalla real que podés probar.',
-    tryIt: 'Probarlo', soon: 'Próximamente', start: 'Registrar mi negocio',
+    tryIt: 'Probarlo', disputeOpen: 'El equipo vota', start: 'Registrar mi negocio',
     steps: [
       { t: 'Creá tu empresa', p: 'Poné nombre a tu negocio y sumá sus locales.' },
       { t: 'Armá un turno', p: 'Elegí el horario y repartí las propinas entre grupos.' },
@@ -59,7 +59,7 @@ function Mock({ n, c }: { n: number; c: C }) {
     case 2: return <div className="ts-card"><div className="ts-rows"><Row a="AM" b={c.joined} /><Row a="JR" b={c.joined} /><Row a="LP" b={c.joined} /></div></div>
     case 3: return <div className="ts-card"><span className="ts-status">{c.floor} · 2/3</span><div className="ts-rows"><Row a="AM" b={c.here} /><Row a="JR" b={c.here} /><Row a="CD" b={c.away} /></div></div>
     case 4: return <div className="ts-card"><p className="ts-eyebrow">{c.tip}</p><h3 className="ts-h3">{c.thank}</h3><div className="ts-stat" style={{ marginTop: 14 }}><strong>USDC 10.00</strong></div><div className="ts-actions"><span className="ts-btn primary">{c.pay}</span></div></div>
-    case 5: return <div className="ts-card"><span className="ts-status wait">{c.soon}</span><div className="ts-rows"><Row a={c.objection} b="LP" /><Row a={c.votes} b="3/4" /><Row a={c.result} b="✓" /></div></div>
+    case 5: return <div className="ts-card"><span className="ts-status wait">{c.disputeOpen}</span><div className="ts-rows"><Row a={c.objection} b="LP" /><Row a={c.votes} b="3/4" /><Row a={c.result} b="✓" /></div></div>
     default: return <div className="ts-card"><span className="ts-status">{c.paid}</span><div className="ts-rows"><Row a="AM" c="3.00 USDC" /><Row a="JR" c="3.00 USDC" /><Row a="LP" c="4.00 USDC" /></div><div className="ts-actions"><span className="ts-btn quiet small">{c.csv}</span></div></div>
   }
 }
@@ -77,7 +77,7 @@ export function Demo() {
         <div className="num">{i + 1}</div>
         <h2 className="ts-h2">{s.t}</h2>
         <p className="ts-lead">{s.p}</p>
-        {i !== 5 && <div className="ts-actions"><a className="ts-btn quiet" href="#/console">{c.tryIt} →</a></div>}
+        <div className="ts-actions"><a className="ts-btn quiet" href={i === 5 ? '#/me' : '#/console'}>{c.tryIt} →</a></div>
       </div>
       <div aria-hidden="true"><Mock n={i} c={c} /></div>
     </section>)}

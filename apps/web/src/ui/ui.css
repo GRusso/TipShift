@@ -183,3 +183,8 @@
 .ts-demo-step .num { width: 34px; height: 34px; border-radius: 50%; background: var(--lime); color: #123c2e; font-weight: 800; display: grid; place-items: center; margin-bottom: 16px; }
 .ts-demo-step:nth-of-type(even) > div:first-child { order: 2; }
 @media (max-width: 760px) { .ts-demo-step { grid-template-columns: 1fr; gap: 24px; } .ts-demo-step:nth-of-type(even) > div:first-child { order: 0; } }
+
+/* Disputes: standalone inputs share the look of .ts-field inputs */
+.ts-input { font: inherit; font-size: 14px; font-weight: 500; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.ts-input:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+textarea.ts-input { resize: vertical; }

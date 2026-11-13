@@ -4,11 +4,13 @@ import { splitShiftTips } from '../../../../../src/core/group-split.mjs'
 import { connectTestnetWallet, disconnectTestnetWallet, explorerTransaction, readDemoPool } from '../../near'
 import { callTipshift, publicClient, type PublicClient } from '../client'
 import { downloadCsv } from '../csv'
+import { disputeRows, effectiveShares, type Dispute } from '../dispute'
+import { DisputeList, OpenForm } from './Dispute'
 import { useCopy } from '../i18n'
 import { PublicFrame } from '../layout'
 
 type Group = { groupRef: string; label: string | null; shareBps: number; signedCount: number; people: { employeeId: string; initials: string }[] }
-type Report = { turnRef: string; branchLabel: string; startsAt: string; endsAt: string; distributionTx: string | null; myGroupRef: string; myEmployeeId: string; myInitials: string; groups: Group[] }
+type Report = { turnRef: string; branchLabel: string; startsAt: string; endsAt: string; distributionTx: string | null; myGroupRef: string; myEmployeeId: string; myInitials: string; groups: Group[]; disputes: Dispute[] }
 type Challenge = { nonce: string; recipient: string; messageList: string }
 
 const copy = {
@@ -20,7 +22,7 @@ const copy = {
     none: 'No shifts yet. Scan your group’s QR when a shift starts.',
     group: 'Group', yourShare: 'YOUR SHARE', groupTotal: 'Group total', team: 'Your group', presentIn: 'present',
     download: 'Download CSV', hide: 'Hide', hideConfirm: 'Hide this report from your view?', hideFail: 'Couldn’t hide the report.',
-    dispute: 'Dispute', disputeSoon: 'Coming soon.',
+    actionFail: 'That didn’t work. Try again.',
     retention: 'Reports are removed after 30 days. The payout stays on-chain.', onchain: 'View on-chain ↗', balanceNote: 'Demo pool balance (testnet).',
   },
   es: {
@@ -31,7 +33,7 @@ const copy = {
     none: 'Todavía no hay turnos. Escaneá el QR de tu grupo cuando empiece uno.',
     group: 'Grupo', yourShare: 'TU PARTE', groupTotal: 'Total del grupo', team: 'Tu grupo', presentIn: 'presentes',
     download: 'Descargar CSV', hide: 'Ocultar', hideConfirm: '¿Ocultar este reporte de tu vista?', hideFail: 'No se pudo ocultar el reporte.',
-    dispute: 'Disputar', disputeSoon: 'Próximamente.',
+    actionFail: 'No funcionó. Probá de nuevo.',
     retention: 'Los reportes se borran a los 30 días. El pago queda en la blockchain.', onchain: 'Ver en la blockchain ↗', balanceNote: 'Saldo del pool de demostración (testnet).',
   },
 }
@@ -82,7 +84,19 @@ export function MyShift() {
     finally { setBusy(false) }
   }
 
-  const compute = (report: Report) => splitShiftTips({ balance, groups: report.groups.map((g) => ({
+  // Every dispute action is signed with the wallet; the server answers with the updated reports.
+  const act = async (purpose: string, body: Record<string, unknown>) => {
+    if (!client) return
+    setBusy(true); setMessage('')
+    try {
+      const proof = await sign(client, purpose, c.noSig)
+      const r = await callTipshift<{ reports?: Report[] }>(client, { ...body, ...proof })
+      if (!r) throw new Error(c.actionFail)
+      if (Array.isArray(r.reports)) setReports(r.reports)
+    } catch (e) { setMessage(e instanceof Error && e.message !== 'unavailable' ? e.message : c.actionFail) }
+    finally { setBusy(false) }
+  }
+  const compute = (report: Report) => splitShiftTips({ balance, groups: effectiveShares(report.groups, report.disputes).map((g) => ({
     groupRef: g.groupRef, shareBps: g.shareBps,
     // Other groups only expose a headcount; any distinct ids give the same group totals.
     employeeIds: g.groupRef === report.myGroupRef ? g.people.map((p) => p.employeeId) : Array.from({ length: g.signedCount }, (_, i) => `${g.groupRef}:${i}`),
@@ -92,7 +106,8 @@ export function MyShift() {
     const mine = compute(report).find((g) => g.groupRef === report.myGroupRef)
     const group = report.groups.find((g) => g.groupRef === report.myGroupRef)
     downloadCsv(`tipshift-my-shift-${report.startsAt.slice(0, 10)}.csv`, [['location', 'shift_start', 'shift_end', 'group', 'initials', 'amount_usdc'],
-      ...(mine?.people ?? []).map((p) => [report.branchLabel, report.startsAt, report.endsAt, group?.label ?? '', group?.people.find((x) => x.employeeId === p.employeeId)?.initials ?? '', (Number(p.amount) / 1_000_000).toFixed(6)])])
+      ...(mine?.people ?? []).map((p) => [report.branchLabel, report.startsAt, report.endsAt, group?.label ?? '', group?.people.find((x) => x.employeeId === p.employeeId)?.initials ?? '', (Number(p.amount) / 1_000_000).toFixed(6)]),
+      ...disputeRows(report.disputes, (ref) => report.groups.find((g) => g.groupRef === ref)?.label ?? '')])
   }
 
   return <PublicFrame ribbon={c.ribbon}><div className="ts-solo" style={{ maxWidth: 720 }}>
@@ -121,10 +136,13 @@ export function MyShift() {
         {report.distributionTx && <p style={{ marginTop: 10 }}><a href={explorerTransaction(report.distributionTx)} target="_blank" rel="noreferrer">{c.onchain}</a></p>}
         <div className="ts-actions">
           <button className="ts-btn quiet small" onClick={() => download(report)}>{c.download}</button>
-          <button className="ts-btn quiet small" disabled title={c.disputeSoon}>{c.dispute}</button>
           <button className="ts-btn danger small" disabled={busy} onClick={() => void hide(report)}>{c.hide}</button>
         </div>
-        <p className="ts-muted" style={{ fontSize: 11, marginTop: 10 }}>{c.disputeSoon}</p>
+        <div className="ts-actions">{!(report.disputes ?? []).some((d) => d.state === 'voting' || d.state === 'accepted' || d.state === 'correction_voting') && <OpenForm busy={busy} onOpen={(note) => void act(`dispute ${report.turnRef}`, { action: 'report_dispute_open', turnRef: report.turnRef, note })} />}</div>
+        {(report.disputes ?? []).length > 0 && <DisputeList disputes={report.disputes} busy={busy}
+          groups={report.groups.map((g, i) => ({ groupRef: g.groupRef, label: g.label || `${c.group} ${i + 1}`, shareBps: g.shareBps }))}
+          onVote={(d, phase, support) => void act(`vote ${d.disputeId} ${phase} ${support ? 'yes' : 'no'}`, { action: 'report_dispute_vote', disputeId: d.disputeId, phase, support })}
+          onWithdraw={(d) => void act(`withdraw ${d.disputeId}`, { action: 'report_dispute_withdraw', disputeId: d.disputeId })} />}
       </div>
     })}
     {reports && <p className="ts-muted" style={{ fontSize: 12, marginTop: 14 }}>{c.retention}</p>}

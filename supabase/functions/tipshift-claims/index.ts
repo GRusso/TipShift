@@ -457,9 +457,23 @@ function reportStatement(purpose: string) {
 
 // An employee proves wallet control with a one-time signature, then sees only the reports of the
 // shifts they were present for. The wallet is matched against every location's commitment.
-async function handleEmployeeReports(action: 'report_start' | 'report_list' | 'report_hide', payload: Record<string, unknown>) {
+type ReportAction = 'report_start' | 'report_list' | 'report_hide' | 'report_dispute_open' | 'report_dispute_vote' | 'report_dispute_withdraw'
+
+// What the wallet signs for each action. The text is shown by the wallet, so it says what is being done.
+function reportPurpose(action: ReportAction, payload: Record<string, unknown>) {
+  if (action === 'report_hide') return `hide ${requiredUuid(payload.turnRef, 'turnRef')}`
+  if (action === 'report_dispute_open') return `dispute ${requiredUuid(payload.turnRef, 'turnRef')}`
+  if (action === 'report_dispute_vote') {
+    const phase = payload.phase === 'correction' ? 'correction' : 'dispute'
+    return `vote ${requiredUuid(payload.disputeId, 'disputeId')} ${phase} ${payload.support === true ? 'yes' : 'no'}`
+  }
+  if (action === 'report_dispute_withdraw') return `withdraw ${requiredUuid(payload.disputeId, 'disputeId')}`
+  return 'list'
+}
+
+async function handleEmployeeReports(action: ReportAction, payload: Record<string, unknown>) {
   const { service } = clients()
-  const purpose = action === 'report_hide' ? `hide ${requiredUuid(payload.turnRef, 'turnRef')}` : 'list'
+  const purpose = reportPurpose(action, payload)
   if (action === 'report_start') {
     const nonce = crypto.getRandomValues(new Uint8Array(32))
     const { error } = await service.rpc('tipshift_report_challenge_start', { p_nonce: bytea(nonce) })
@@ -482,6 +496,21 @@ async function handleEmployeeReports(action: 'report_start' | 'report_list' | 'r
     const { data, error } = await service.rpc('tipshift_employee_reports', { p_commitments: commitments })
     return error ? null : { reports: data }
   }
+  // After a dispute action the app needs the updated reports; returning them saves a second wallet signature.
+  const freshReports = async () => (await service.rpc('tipshift_employee_reports', { p_commitments: commitments })).data
+  if (action === 'report_dispute_open') {
+    const note = typeof payload.note === 'string' ? payload.note.trim().slice(0, 280) : ''
+    const { data, error } = await service.rpc('tipshift_employee_dispute_open', { p_commitments: commitments, p_turn_ref: requiredUuid(payload.turnRef, 'turnRef'), p_note: note })
+    return error || typeof data !== 'string' ? null : { disputeId: data, reports: await freshReports() }
+  }
+  if (action === 'report_dispute_vote') {
+    const { data, error } = await service.rpc('tipshift_employee_dispute_vote', { p_commitments: commitments, p_dispute_id: requiredUuid(payload.disputeId, 'disputeId'), p_phase: payload.phase === 'correction' ? 'correction' : 'dispute', p_support: payload.support === true })
+    return error || data !== true ? null : { voted: true, reports: await freshReports() }
+  }
+  if (action === 'report_dispute_withdraw') {
+    const { data, error } = await service.rpc('tipshift_employee_dispute_withdraw', { p_commitments: commitments, p_dispute_id: requiredUuid(payload.disputeId, 'disputeId') })
+    return error || data !== true ? null : { withdrawn: true, reports: await freshReports() }
+  }
   const { data, error } = await service.rpc('tipshift_employee_hide_report', { p_commitments: commitments, p_turn_ref: requiredUuid(payload.turnRef, 'turnRef') })
   return error || data !== true ? null : { hidden: true }
 }
@@ -491,6 +520,18 @@ async function handleAdminBranchReports(request: Request, payload: Record<string
   if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
   const { data, error } = await principal.service.rpc('tipshift_admin_branch_reports', { p_admin_user_id: principal.userId, p_branch_ref: requiredUuid(payload.branchRef, 'branchRef') })
   return error || !Array.isArray(data) ? { status: 403, payload: { error: 'reports_unavailable' } } : { status: 200, payload: { reports: data } }
+}
+
+async function handleAdminDisputePropose(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const shares = Array.isArray(payload.shares) ? payload.shares.slice(0, 20).map((entry) => {
+    const item = (entry ?? {}) as Record<string, unknown>
+    return { groupRef: requiredUuid(item.groupRef, 'groupRef'), shareBps: String(Math.trunc(Number(item.shareBps))) }
+  }) : []
+  const note = typeof payload.note === 'string' ? payload.note.trim().slice(0, 280) : ''
+  const { data, error } = await principal.service.rpc('tipshift_admin_dispute_propose', { p_admin_user_id: principal.userId, p_dispute_id: requiredUuid(payload.disputeId, 'disputeId'), p_shares: shares, p_note: note })
+  return error || data !== true ? { status: 409, payload: { error: 'dispute_unavailable' } } : { status: 200, payload: { proposed: true } }
 }
 
 async function handleAdminDeleteReport(request: Request, payload: Record<string, unknown>) {
@@ -561,12 +602,16 @@ Deno.serve(async (request) => {
       const result = await handleCheckin(action, payload)
       return result ? json(result, 200, cors) : json({ error: 'checkin_unavailable' }, 404, cors)
     }
-    if (action === 'report_start' || action === 'report_list' || action === 'report_hide') {
+    if (action === 'report_start' || action === 'report_list' || action === 'report_hide' || action === 'report_dispute_open' || action === 'report_dispute_vote' || action === 'report_dispute_withdraw') {
       const result = await handleEmployeeReports(action, payload)
       return result ? json(result, 200, cors) : json({ error: 'reports_unavailable' }, 404, cors)
     }
     if (action === 'admin_branch_reports') {
       const result = await handleAdminBranchReports(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_dispute_propose') {
+      const result = await handleAdminDisputePropose(request, payload)
       return json(result.payload, result.status, cors)
     }
     if (action === 'admin_delete_report') {

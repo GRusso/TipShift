@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -b --pretty false",
-    "test:core": "node --experimental-strip-types --test test/tipshift-vault.test.mjs test/tipshift-roles.test.mjs test/tipshift-sdk.test.mjs test/functional-demo-flow.test.mjs test/recipient-claim-coordinator.test.mjs test/admin-turn-request.test.mjs test/admin-group-turn-request.test.mjs test/group-split.test.mjs test/private-manifest.test.mjs",
+    "test:core": "node --experimental-strip-types --test test/tipshift-vault.test.mjs test/tipshift-roles.test.mjs test/tipshift-sdk.test.mjs test/functional-demo-flow.test.mjs test/recipient-claim-coordinator.test.mjs test/admin-turn-request.test.mjs test/admin-group-turn-request.test.mjs test/group-split.test.mjs test/private-manifest.test.mjs test/dispute.test.mjs",
     "check": "pnpm typecheck && pnpm test:core && pnpm build"
   },
   "dependencies": {

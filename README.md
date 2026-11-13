@@ -12,7 +12,8 @@ Built for the NEAR Hackathon. **Testnet only**: no real money moves.
 2. **Join.** Each employee opens a one-time link or QR, enters their initials and connects a NEAR wallet. The manager sees initials only, never wallets.
 3. **Check in.** At the start of a shift the employee scans their group's QR and signs a message (NEP-413). Signing moves no funds.
 4. **Tip.** Customers scan a public QR and pay an exact one-time amount in USDC into the shift's pool on the vault contract.
-5. **Get paid.** The shift closes, the split is frozen on-chain and each person is paid. Groups have a percentage of the tips; people inside a group split equally; a group with nobody present gets nothing.
+5. **Dispute.** Anyone who was present can object to the split. The people present vote (more than half must agree). If it is accepted, the manager proposes a corrected split and the team votes on it. The whole history is part of the shift report and its CSV.
+6. **Get paid.** The shift closes, the split is frozen on-chain and each person is paid. Groups have a percentage of the tips; people inside a group split equally; a group with nobody present gets nothing.
 
 Privacy by design: no names, emails, phones or seed phrases are collected from employees or customers. Reports are removed after 30 days; the final distribution stays on-chain.
 
@@ -46,8 +47,9 @@ Server secrets (never in the repo): `TIPSHIFT_ALLOWED_ORIGINS`, `TIPSHIFT_PUBLIC
 3. **Join link:** Console, Team tab. Open the link, enter initials, connect the wallet, then "Set up USDC" (NEP-145 storage deposit, needed to receive a NEP-141 token).
 4. **Shift:** Console, Shifts tab. Create a shift with groups and scan each group's QR to check in.
 5. **Customer QR:** Console, Customer QR tab. Scan it or open the link, pay with a wallet that holds test USDC (`usdc.fakes.testnet`).
-6. **Close and pay:** Console, Customer QR tab, "Close shift and pay". This demo uses the fixed demonstration pool (one-shot).
-7. **My shifts:** `#/me`. Sign with your wallet to see what you earned and download a CSV.
+6. **Dispute:** `#/me`, "Dispute this split" on a shift you checked in to. Another present employee votes in `#/me`; once accepted, the manager proposes a corrected split in Console, Reports, and the team votes on it.
+7. **Close and pay:** Console, Customer QR tab, "Close shift and pay". This demo uses the fixed demonstration pool (one-shot).
+8. **My shifts:** `#/me`. Sign with your wallet to see what you earned and download a CSV (it includes the dispute history).
 
 ## Architecture
 
@@ -71,7 +73,7 @@ Payments are `ft_transfer_call` into per-shift pools. The contract rejects a dif
 - Testnet and test USDC only.
 - The console's close-and-pay button uses a fixed demonstration pool with a fixed team. Per-shift pools created by a server key are not built yet.
 - Shifts are not closed automatically yet.
-- Disputes are not built; the button is disabled.
+- Dispute votes and corrections live in the shift report only, not on-chain. The console's demo payout still pays the fixed demonstration pool, so an approved correction changes the report and CSV but not that demo transaction.
 - Browser wallet popups are tested by hand on the hosted demo, not by automated tests.
 
 ## Roadmap and business model

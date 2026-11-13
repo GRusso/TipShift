@@ -17,7 +17,7 @@ const copy = {
     principles: [
       { n: '01', t: 'Yours', p: 'Tips go straight to each person’s wallet. We never hold them.' },
       { n: '02', t: 'Fair', p: 'If you were there, you’re paid. If not, you’re not.' },
-      { n: '03', t: 'Transparent', p: 'Every shift has a report. Objections will be recorded in it too. Coming soon.' },
+      { n: '03', t: 'Transparent', p: 'Every shift has a report. Objections and their outcome are recorded in it.' },
     ],
     flowEyebrow: 'HOW IT WORKS', flowTitle: 'Four steps.',
     flow: [
@@ -42,7 +42,7 @@ const copy = {
     principles: [
       { n: '01', t: 'Tuyas', p: 'Las propinas van directo a la wallet de cada persona. Nunca las guardamos.' },
       { n: '02', t: 'Justo', p: 'Si estuviste, cobrás. Si no, no.' },
-      { n: '03', t: 'Transparente', p: 'Cada turno tiene su reporte. Las objeciones también quedarán registradas ahí. Próximamente.' },
+      { n: '03', t: 'Transparente', p: 'Cada turno tiene su reporte. Las objeciones y su resultado quedan registradas ahí.' },
     ],
     flowEyebrow: 'CÓMO FUNCIONA', flowTitle: 'Cuatro pasos.',
     flow: [
