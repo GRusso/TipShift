@@ -177,3 +177,9 @@
 .ts-modal-card { background: var(--card); color: var(--ink); border-radius: 24px; padding: 32px 34px; text-align: center; max-width: 560px; width: 100%; display: grid; justify-items: center; }
 .ts-modal .ts-qr { padding: 18px; }
 .ts-modal .ts-qr img { width: min(420px, 70vw); height: min(420px, 70vw); }
+
+/* Demo walkthrough */
+.ts-demo-step { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+.ts-demo-step .num { width: 34px; height: 34px; border-radius: 50%; background: var(--lime); color: #123c2e; font-weight: 800; display: grid; place-items: center; margin-bottom: 16px; }
+.ts-demo-step:nth-of-type(even) > div:first-child { order: 2; }
+@media (max-width: 760px) { .ts-demo-step { grid-template-columns: 1fr; gap: 24px; } .ts-demo-step:nth-of-type(even) > div:first-child { order: 0; } }

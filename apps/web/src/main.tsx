@@ -1,7 +1,6 @@
 import './shim'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { App } from './App'
 import './admin'
 import { RecipientClaim } from './claim'
 import { FloatingThemeToggle } from './theme'
@@ -13,6 +12,7 @@ import { Console } from './ui/pages/Console'
 import { MyShift } from './ui/pages/MyShift'
 import { Tip } from './ui/pages/Tip'
 import { Landing } from './ui/pages/Landing'
+import { Demo } from './ui/pages/Demo'
 import './styles.css'
 import './theme.css'
 
@@ -29,7 +29,7 @@ function Root() {
     case 'claim': return <Legacy><RecipientClaim /></Legacy>
     case 'console': return <Console />
     default:
-      if (route.path === '/demo') return <App />
+      if (route.path === '/demo') return <Demo />
       if (route.path === '/me') return <MyShift />
       if (route.path === '/company') return <Console />
       return <Landing />
