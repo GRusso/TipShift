@@ -1,7 +1,7 @@
 import { Buffer } from 'buffer'
 import type { WalletSelector } from '@near-wallet-selector/core'
 
-export const TESTNET_RPC = import.meta.env.VITE_TIPSHIFT_TESTNET_RPC ?? 'https://rpc.testnet.near.org'
+export const TESTNET_RPC = import.meta.env.VITE_TIPSHIFT_TESTNET_RPC ?? 'https://test.rpc.fastnear.com'
 export const VAULT_ACCOUNT_ID = import.meta.env.VITE_TIPSHIFT_VAULT_ID ?? 'vault.tipshift-owner-20261105-r8k4.testnet'
 export const TOKEN_ACCOUNT_ID = import.meta.env.VITE_TIPSHIFT_TOKEN_ID ?? 'usdc.fakes.testnet'
 export const DEMO_POOL_ID = import.meta.env.VITE_TIPSHIFT_POOL_ID ?? 'web-live-20261110'
@@ -31,7 +31,8 @@ function selector() {
     import('@near-wallet-selector/here-wallet'),
     import('@near-wallet-selector/nightly'),
   ]).then(([core, meteor, myNear, here, nightly]) => core.setupWalletSelector({
-    network: 'testnet',
+    // The default public testnet endpoint is deprecated and answers 429, so every read goes through FastNEAR.
+    network: { networkId: 'testnet', nodeUrl: TESTNET_RPC, helperUrl: 'https://helper.testnet.near.org', explorerUrl: 'https://testnet.nearblocks.io', indexerUrl: 'https://testnet-api.kitwallet.app' },
     modules: [meteor.setupMeteorWallet(), myNear.setupMyNearWallet(), here.setupHereWallet(), nightly.setupNightly()],
   }))
   return selectorPromise
