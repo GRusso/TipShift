@@ -23,7 +23,7 @@ Caveat: the console finds shifts in this browser's localStorage; create and clos
 
 ## Pending / TODO
 - Test accounts: `smoothtest.testnet` has ~1-3 test USDC (`usdc.fakes.testnet`, storage registered); `tsx-cust-1112` ~1 USDC left; owner `tsx-owner-1112` ~2 NEAR. Fund more if needed.
-- Drafts ready in `docs/SUBMISSION_DRAFTS.md`: X post EN/ES, form description, video shot list. Human fills repo link, post link, team, wallet, email.
+- Drafts ready in `~/Claude/TipShift - Soporte/SUBMISSION_DRAFTS.md` (moved out of the repo in session 7): X post EN/ES, form description, video shot list. Human fills repo link, post link, team, wallet, email.
 - Video (~2 min), X post, form: human, today before 20:59 ART.
 - Make the repo public (secrets scan was clean; the passwords file was deleted from the repo root, a copy lives in `~/Claude/TipShift - Soporte`).
 - Keep the demo up indefinitely (user decision: product demo for Claria).

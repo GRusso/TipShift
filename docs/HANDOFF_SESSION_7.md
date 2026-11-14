@@ -25,7 +25,7 @@ Real Meteor popups for join / create pool / recharge / close; password-recovery 
 Revoking a pool or manager does not move on-chain funds. A wallet that logged in alone owns an empty company, so managers must first enter via the owner's QR. `set_pool_admin` has a UI only as "hand the pool to the manager". No automatic close; dispute votes have no deadline.
 
 ## Before the demo
-Create the location pool once from the app with `smoothtest.testnet` (needs about 0.4 NEAR) and make sure test USDC and USDC storage exist on the wallets used. Submission items (video, X post, form, public repo) are in `docs/SUBMISSION_DRAFTS.md`.
+Create the location pool once from the app with `smoothtest.testnet` (needs about 0.4 NEAR) and make sure test USDC and USDC storage exist on the wallets used. Submission items (video, X post, form, public repo) are in `~/Claude/TipShift - Soporte/SUBMISSION_DRAFTS.md` (outside the repo).
 
 ## Operating notes
 Tokens in `~/.config/tipshift/`. Deploy web: `pnpm check`, copy `dist` outside the repo, `npx wrangler pages deploy . --project-name tipshift --branch main --commit-dirty=true`. Functions: `npx supabase functions deploy tipshift-claims --remote=thqhcdxyydrznftuigly --yes`. Contract: `cargo near build non-reproducible-wasm` then `near deploy tsx-vault-1112.testnet target/near/tipshift_vault.wasm --force`.
