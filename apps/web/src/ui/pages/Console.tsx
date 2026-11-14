@@ -488,17 +488,15 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
   useEffect(() => { void load() }, [load])
   const fail = (e: unknown) => setNote({ text: e instanceof Error ? e.message : String(e), bad: true })
   const connect = async () => {
-    setBusy(true); setNote(null)
-    try {
-      const { accountId } = await connectTestnetWallet({ contractId: undefined, methodNames: ['start_collection', 'open_payment_session'] })
-      if (accountId !== DEMO_ADMIN_ID) throw new Error(c.notAdmin)
-      setAccount(accountId)
-    } catch (e) { fail(e) } finally { setBusy(false) }
+    const { accountId } = await connectTestnetWallet({ contractId: undefined, methodNames: ['start_collection', 'open_payment_session'] })
+    if (accountId !== DEMO_ADMIN_ID) throw new Error(c.notAdmin)
+    setAccount(accountId)
+    return accountId
   }
   const open = async () => {
-    if (!account) return
     setBusy(true); setNote(null)
     try {
+      const account = await connect()
       if (pool?.state === 'draft') { await startCollection({ accountId: account }); await load() }
       const ref = paymentRef()
       await openPaymentSession({ accountId: account, paymentRef: ref, amount: toAtomicUsdc(amount) })
@@ -527,9 +525,9 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
     </div>
     {pool === null && <div className="ts-notice bad">{c.waitingPool}</div>}
     <div className="ts-card" style={{ marginTop: 16 }}>
-      {account ? <p className="ts-muted">{c.connectedAs}: <b className="ts-mono">{account}</b></p> : <div className="ts-actions" style={{ marginTop: 0 }}><button className="ts-btn quiet" disabled={busy} onClick={() => void connect()}>{c.connectAdmin}</button></div>}
+      {account && <p className="ts-muted">{c.connectedAs}: <b className="ts-mono">{account}</b></p>}
       <label className="ts-field">{c.tipAmount}<input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
-      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !account || (pool?.state !== 'collecting' && pool?.state !== 'draft')} onClick={() => void open()}>{c.openSession}</button></div>
+      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || (pool?.state !== 'collecting' && pool?.state !== 'draft')} onClick={() => void open()}>{c.openSession}</button></div>
     </div>
     <div className="ts-card" style={{ marginTop: 16 }}>
       <h3 className="ts-h3">{c.closeTitle}</h3>
@@ -543,6 +541,7 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
       <button type="button" className="ts-qr ts-qr-btn" aria-label={c.enlarge} onClick={() => setZoom(true)}><img src={qr.small} alt="QR" width={200} height={200} /></button>
       <p className="ts-muted" style={{ marginTop: 12 }}>{c.customerHint}</p>
       <a className="ts-muted" style={{ fontSize: 11, wordBreak: 'break-all' }} href={qr.link} target="_blank" rel="noreferrer">{qr.link}</a>
+      <div className="ts-actions"><button type="button" className="ts-btn quiet small" onClick={() => void navigator.clipboard.writeText(qr.link).then(() => setNote({ text: c.copied }))}>{c.copyLink}</button><a className="ts-btn quiet small" href={qr.link} target="_blank" rel="noreferrer">{c.openLink}</a></div>
     </div>}
     {zoom && qr && <QrModal title={`USDC ${amount}`} sub={branchLabel} qr={qr.big} hint={c.customerHint} onClose={() => setZoom(false)} />}
   </>
