@@ -905,7 +905,7 @@ function ReportTab({ branchLabel, branchRef, poolId, busy, setBusy, setNote }: T
     {(reports ?? []).map((report) => {
       const result = split(report)
       return <div className="ts-card" key={report.turnRef} style={{ marginTop: 16 }}>
-        <div className="ts-top" style={{ marginBottom: 6 }}><div><p className="ts-eyebrow">{c.splitTitle}</p><h3 style={{ fontSize: 20, margin: 0 }}>{new Date(report.startsAt).toLocaleDateString()} · {hhmm(report.startsAt)}–{hhmm(report.endsAt)}</h3></div>
+        <div className="ts-top" style={{ marginBottom: 6 }}><div><p className="ts-eyebrow">{c.splitTitle}</p><h3 style={{ fontSize: 20, margin: 0 }}>{new Date(report.startsAt).toLocaleDateString()} · {hhmm(report.startsAt)}–{hhmm(report.endsAt)}{report.closed && report.closingBalance ? ` · ${usdc(BigInt(report.closingBalance))}` : ''}</h3></div>
           <div className="ts-actions" style={{ marginTop: 0 }}><button className="ts-btn quiet small" onClick={() => download(report)}>{c.download}</button><button className="ts-btn danger small" disabled={busy} onClick={() => void remove(report)}>{c.deleteReport}</button></div></div>
         <div style={{ overflowX: 'auto' }}><table className="ts-table"><thead><tr><th>{c.group}</th><th>{c.present}</th><th>{c.groupAmount}</th><th>{c.person}</th></tr></thead><tbody>
           {report.groups.map((g, i) => {
