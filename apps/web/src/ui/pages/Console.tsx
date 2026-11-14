@@ -65,7 +65,7 @@ const copy = {
     registered: 'Team', nobody: 'Nobody has joined yet.', registeredOn: 'Joined',
     working: 'Working…',
     download: 'Download CSV', deleteReport: 'Delete', confirmDelete: 'Delete this report? The payout stays on-chain.', deleteFail: 'Couldn’t delete the report.', retention: 'Reports are removed after 30 days. The payout stays on-chain.', onchain: 'View on-chain ↗',
-    tipsLead: 'Show this QR to a customer. Each one is a single, exact payment.', poolState: 'Pool', poolBalance: 'Balance', connectAdmin: 'Authorize with the location wallet', notAdmin: 'This isn’t the location’s admin wallet.', tipAmount: 'Tip (test USDC)', openSession: 'Create QR', sessionOpened: 'Ready. Show this QR to the customer.', waitingPool: 'The pool isn’t active yet.', customerQr: 'Customer QR', customerHint: 'Reveals no pool, wallet or percentage.', connectedAs: 'Connected', closeTitle: 'Close shift', closeText: 'Closes the shift, splits the tips and pays everyone. You’ll confirm twice in your wallet. Demo only, once.', closeBtn: 'Close shift and pay', closeConfirm: 'This pays out the demo pool and can’t be repeated. Continue?', closing: 'Closing…', paying: 'Paying…', confirming: 'Confirming…', closeDone: 'Done. Everyone has been paid.', closeAgain: 'Already paid out.', partial: (done: string) => `${done} paid. The rest failed, usually because a wallet isn’t set up for USDC. Fix it and press again: only the missing ones are paid.`, viewTx: 'View on-chain',
+    tipsLead: 'Show this QR to a customer. Each QR works for one payment: the customer chooses the amount.', poolState: 'Pool', poolBalance: 'Balance', connectAdmin: 'Authorize with the location wallet', notAdmin: 'This isn’t the location’s admin wallet.', tipAmount: 'Tip (test USDC, optional)', anyAmount: 'Any amount', openSession: 'Create QR', sessionOpened: 'Ready. Show this QR to the customer.', waitingPool: 'The pool isn’t active yet.', customerQr: 'Customer QR', customerHint: 'Reveals no pool, wallet or percentage.', connectedAs: 'Connected', closeTitle: 'Close shift', closeText: 'Closes the shift, splits the tips and pays everyone. You’ll confirm twice in your wallet. Demo only, once.', closeBtn: 'Close shift and pay', closeConfirm: 'This pays out the demo pool and can’t be repeated. Continue?', closing: 'Closing…', paying: 'Paying…', confirming: 'Confirming…', closeDone: 'Done. Everyone has been paid.', closeAgain: 'Already paid out.', partial: (done: string) => `${done} paid. The rest failed, usually because a wallet isn’t set up for USDC. Fix it and press again: only the missing ones are paid.`, viewTx: 'View on-chain',
     reportLead: 'The proposed split, based on who checked in. Empty groups get nothing.', noReport: 'No active shifts yet.', group: 'Group', present: 'Present', groupAmount: 'Group', each: 'Each', total: 'Total', balanceNote: 'Demo pool balance (testnet).', person: 'Person', amount: 'Amount', nobody2: 'Nobody checked in', splitTitle: 'Proposed split',
   },
   es: {
@@ -92,7 +92,7 @@ const copy = {
     registered: 'Equipo', nobody: 'Todavía no se sumó nadie.', registeredOn: 'Se sumó',
     working: 'Procesando…',
     download: 'Descargar CSV', deleteReport: 'Eliminar', confirmDelete: '¿Eliminar este reporte? El pago queda en la blockchain.', deleteFail: 'No se pudo eliminar el reporte.', retention: 'Los reportes se borran a los 30 días. El pago queda en la blockchain.', onchain: 'Ver en la blockchain ↗',
-    tipsLead: 'Mostrale este QR a un cliente. Cada uno es un pago único y exacto.', poolState: 'Pool', poolBalance: 'Saldo', connectAdmin: 'Autorizar con la wallet del local', notAdmin: 'Esta no es la wallet administradora del local.', tipAmount: 'Propina (USDC de prueba)', openSession: 'Crear QR', sessionOpened: 'Listo. Mostrale este QR al cliente.', waitingPool: 'El pool todavía no está activo.', customerQr: 'QR del cliente', customerHint: 'No revela pool, wallets ni porcentajes.', connectedAs: 'Conectada', closeTitle: 'Cerrar turno', closeText: 'Cierra el turno, reparte las propinas y paga a todos. Vas a confirmar dos veces en tu wallet. Solo demo, una vez.', closeBtn: 'Cerrar turno y pagar', closeConfirm: 'Esto paga el pool de demostración y no se puede repetir. ¿Continuar?', closing: 'Cerrando…', paying: 'Pagando…', confirming: 'Confirmando…', closeDone: 'Listo. Todos cobraron.', closeAgain: 'Ya se pagó.', partial: (done: string) => `${done} pagados. El resto falló, normalmente porque una wallet no está preparada para USDC. Corregilo y volvé a pulsar: solo se pagan los que faltan.`, viewTx: 'Ver en la blockchain',
+    tipsLead: 'Mostrale este QR a un cliente. Cada QR sirve para un pago: el cliente elige el monto.', poolState: 'Pool', poolBalance: 'Saldo', connectAdmin: 'Autorizar con la wallet del local', notAdmin: 'Esta no es la wallet administradora del local.', tipAmount: 'Propina (USDC de prueba, opcional)', anyAmount: 'Cualquier monto', openSession: 'Crear QR', sessionOpened: 'Listo. Mostrale este QR al cliente.', waitingPool: 'El pool todavía no está activo.', customerQr: 'QR del cliente', customerHint: 'No revela pool, wallets ni porcentajes.', connectedAs: 'Conectada', closeTitle: 'Cerrar turno', closeText: 'Cierra el turno, reparte las propinas y paga a todos. Vas a confirmar dos veces en tu wallet. Solo demo, una vez.', closeBtn: 'Cerrar turno y pagar', closeConfirm: 'Esto paga el pool de demostración y no se puede repetir. ¿Continuar?', closing: 'Cerrando…', paying: 'Pagando…', confirming: 'Confirmando…', closeDone: 'Listo. Todos cobraron.', closeAgain: 'Ya se pagó.', partial: (done: string) => `${done} pagados. El resto falló, normalmente porque una wallet no está preparada para USDC. Corregilo y volvé a pulsar: solo se pagan los que faltan.`, viewTx: 'Ver en la blockchain',
     reportLead: 'El reparto propuesto, según quién hizo check-in. Los grupos vacíos no cobran.', noReport: 'Todavía no hay turnos activos.', group: 'Grupo', present: 'Presentes', groupAmount: 'Grupo', each: 'Cada uno', total: 'Total', balanceNote: 'Saldo del pool de demostración (testnet).', person: 'Persona', amount: 'Monto', nobody2: 'Nadie hizo check-in', splitTitle: 'Reparto propuesto',
   },
 }
@@ -478,14 +478,14 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
   const c = useCopy(copy)
   const [pool, setPool] = useState<PoolSummary | null | undefined>(undefined)
   const [account, setAccount] = useState<string | null>(null)
-  const [amount, setAmount] = useState('5')
+  const [amount, setAmount] = useState('')
   const [qr, setQr] = useState<{ small: string; big: string; link: string } | null>(null)
   const [zoom, setZoom] = useState(false)
   const [busy, setBusy] = useState(false)
   const [step, setStep] = useState('')
   const [distTx, setDistTx] = useState<string | null>(savedDistributionTx())
   const load = useCallback(() => readDemoPool().then(setPool).catch(() => setPool(null)), [])
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void load(); const t = window.setInterval(() => void load(), 10_000); return () => window.clearInterval(t) }, [load])
   const fail = (e: unknown) => setNote({ text: e instanceof Error ? e.message : String(e), bad: true })
   const connect = async () => {
     const { accountId } = await connectTestnetWallet({ contractId: undefined, methodNames: ['start_collection', 'open_payment_session'] })
@@ -499,8 +499,8 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
       const account = await connect()
       if (pool?.state === 'draft') { await startCollection({ accountId: account }); await load() }
       const ref = paymentRef()
-      await openPaymentSession({ accountId: account, paymentRef: ref, amount: toAtomicUsdc(amount) })
-      const link = `${window.location.origin}${window.location.pathname}?payment_ref=${ref}&amount=${encodeURIComponent(amount)}`
+      await openPaymentSession({ accountId: account, paymentRef: ref, amount: amount.trim() ? toAtomicUsdc(amount) : 0n })
+      const link = `${window.location.origin}${window.location.pathname}?payment_ref=${ref}&amount=${amount.trim() ? encodeURIComponent(amount) : 'open'}`
       setQr({ link, small: await toDataURL(link, { width: 240, margin: 1 }), big: await toDataURL(link, { width: 720, margin: 2 }) })
       setNote({ text: c.sessionOpened }); await load()
     } catch (e) { fail(e) } finally { setBusy(false) }
@@ -526,7 +526,7 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
     {pool === null && <div className="ts-notice bad">{c.waitingPool}</div>}
     <div className="ts-card" style={{ marginTop: 16 }}>
       {account && <p className="ts-muted">{c.connectedAs}: <b className="ts-mono">{account}</b></p>}
-      <label className="ts-field">{c.tipAmount}<input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
+      <label className="ts-field">{c.tipAmount}<input inputMode="decimal" value={amount} placeholder={c.anyAmount} onChange={(e) => setAmount(e.target.value)} /></label>
       <div className="ts-actions"><button className="ts-btn primary" disabled={busy || (pool?.state !== 'collecting' && pool?.state !== 'draft')} onClick={() => void open()}>{c.openSession}</button></div>
     </div>
     <div className="ts-card" style={{ marginTop: 16 }}>
@@ -543,7 +543,7 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
       <a className="ts-muted" style={{ fontSize: 11, wordBreak: 'break-all' }} href={qr.link} target="_blank" rel="noreferrer">{qr.link}</a>
       <div className="ts-actions"><button type="button" className="ts-btn quiet small" onClick={() => void navigator.clipboard.writeText(qr.link).then(() => setNote({ text: c.copied }))}>{c.copyLink}</button><a className="ts-btn quiet small" href={qr.link} target="_blank" rel="noreferrer">{c.openLink}</a></div>
     </div>}
-    {zoom && qr && <QrModal title={`USDC ${amount}`} sub={branchLabel} qr={qr.big} hint={c.customerHint} onClose={() => setZoom(false)} />}
+    {zoom && qr && <QrModal title={amount.trim() ? `USDC ${amount}` : 'USDC'} sub={branchLabel} qr={qr.big} hint={c.customerHint} onClose={() => setZoom(false)} />}
   </>
 }
 

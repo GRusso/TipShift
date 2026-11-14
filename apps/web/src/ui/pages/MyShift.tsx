@@ -23,7 +23,7 @@ const copy = {
     group: 'Group', yourShare: 'YOUR SHARE', groupTotal: 'Group total', team: 'Your group', presentIn: 'present',
     download: 'Download CSV', hide: 'Hide', hideConfirm: 'Hide this report from your view?', hideFail: 'Couldn’t hide the report.',
     actionFail: 'That didn’t work. Try again.',
-    retention: 'Reports are removed after 30 days. The payout stays on-chain.', onchain: 'View on-chain ↗', balanceNote: 'Demo pool balance (testnet).',
+    retention: 'Reports are removed after 30 days. The payout stays on-chain.', onchain: 'View on-chain ↗', balanceNote: 'Demo pool balance (testnet).', poolNow: 'Tips collected so far',
   },
   es: {
     ribbon: 'Mis turnos · Testnet',
@@ -34,7 +34,7 @@ const copy = {
     group: 'Grupo', yourShare: 'TU PARTE', groupTotal: 'Total del grupo', team: 'Tu grupo', presentIn: 'presentes',
     download: 'Descargar CSV', hide: 'Ocultar', hideConfirm: '¿Ocultar este reporte de tu vista?', hideFail: 'No se pudo ocultar el reporte.',
     actionFail: 'No funcionó. Probá de nuevo.',
-    retention: 'Los reportes se borran a los 30 días. El pago queda en la blockchain.', onchain: 'Ver en la blockchain ↗', balanceNote: 'Saldo del pool de demostración (testnet).',
+    retention: 'Los reportes se borran a los 30 días. El pago queda en la blockchain.', onchain: 'Ver en la blockchain ↗', poolNow: 'Propinas juntadas hasta ahora', balanceNote: 'Saldo del pool de demostración (testnet).',
   },
 }
 
@@ -57,7 +57,10 @@ export function MyShift() {
   const [balance, setBalance] = useState(0n)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
-  useEffect(() => { void readDemoPool().then((p) => setBalance(p ? BigInt(p.balance) : 0n)).catch(() => undefined) }, [])
+  useEffect(() => {
+    const read = () => void readDemoPool().then((p) => setBalance(p ? BigInt(p.balance) : 0n)).catch(() => undefined)
+    read(); const t = window.setInterval(read, 10_000); return () => window.clearInterval(t)
+  }, [])
 
   const switchWallet = async () => { await disconnectTestnetWallet().catch(() => undefined); setReports(null); setMessage('') }
 
@@ -127,6 +130,7 @@ export function MyShift() {
       const myAmount = mine?.people.find((p) => p.employeeId === report.myEmployeeId)?.amount ?? 0n
       return <div className="ts-card" key={report.turnRef} style={{ marginTop: 16 }}>
         <div className="ts-top" style={{ marginBottom: 10 }}><div><p className="ts-eyebrow">{report.branchLabel} · {myGroup?.label || c.group}</p><h2 style={{ fontSize: 20, margin: 0 }}>{new Date(report.startsAt).toLocaleDateString()} · {time(report.startsAt)}–{time(report.endsAt)}</h2></div></div>
+        <div className="ts-stat" style={{ marginBottom: 12 }}><span>{c.poolNow}</span><strong>{usdc(balance)}</strong></div>
         <div className="ts-grid2">
           <div className="ts-stat"><span>{c.yourShare}</span><strong style={{ fontSize: 34 }}>{usdc(myAmount)}</strong></div>
           <div className="ts-stat"><span>{c.groupTotal}</span><strong>{usdc(mine?.amount ?? 0n)}</strong></div>

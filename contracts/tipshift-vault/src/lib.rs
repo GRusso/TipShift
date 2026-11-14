@@ -319,7 +319,8 @@ impl TipShiftVault {
         self.assert_admin(&pool);
         assert_eq!(pool.state, PoolState::Collecting, "collection is not open");
         Self::assert_payment_ref(&payment_ref);
-        assert!(expected_amount.0 > 0, "expected amount must be positive");
+        // 0 means "open amount": the customer chooses any positive tip. The session is still
+        // single-use and only the administrator can open it.
         assert!(
             self.payment_sessions.get(&payment_ref).is_none(),
             "payment_ref already exists"
@@ -980,8 +981,8 @@ impl FungibleTokenReceiver for TipShiftVault {
             .payment_sessions
             .get(&funding.payment_ref)
             .expect("unknown or already used payment_ref");
-        assert_eq!(
-            amount.0, session.expected_amount,
+        assert!(
+            session.expected_amount == 0 || amount.0 == session.expected_amount,
             "tip amount does not match the approved checkout"
         );
         let mut pool = self.pool_or_panic(&session.pool_id);
@@ -1443,6 +1444,41 @@ mod tests {
             U128(4_999_999),
             r#"{"payment_ref":"checkout-1"}"#.to_string(),
         );
+    }
+
+    #[test]
+    fn open_amount_session_accepts_any_positive_tip_once() {
+        let mut contract = new_contract();
+        create_started_pool(&mut contract);
+        context("admin.testnet", 1_000);
+        contract.open_payment_session("turn-1".to_string(), "checkout-1".to_string(), U128(0));
+        context("usdc.testnet", 1_000);
+        let _ = contract.ft_on_transfer(
+            account("customer.testnet"),
+            U128(1_234_567),
+            r#"{"payment_ref":"checkout-1"}"#.to_string(),
+        );
+        assert_eq!(
+            contract.get_pool("turn-1".to_string()).unwrap().balance.0,
+            1_234_567
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown or already used payment_ref")]
+    fn open_amount_session_cannot_be_reused() {
+        let mut contract = new_contract();
+        create_started_pool(&mut contract);
+        context("admin.testnet", 1_000);
+        contract.open_payment_session("turn-1".to_string(), "checkout-1".to_string(), U128(0));
+        context("usdc.testnet", 1_000);
+        for _ in 0..2 {
+            let _ = contract.ft_on_transfer(
+                account("customer.testnet"),
+                U128(1),
+                r#"{"payment_ref":"checkout-1"}"#.to_string(),
+            );
+        }
     }
 
     #[test]

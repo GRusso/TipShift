@@ -20,7 +20,7 @@ export function resolveRoute(location: Location = window.location): Route {
   if (fragment.has('claim')) return { page: 'claim' }
   const query = new URLSearchParams(location.search)
   const paymentRef = query.get('payment_ref'); const amount = query.get('amount')
-  if (paymentRef && amount && /^ts-[a-f0-9]{32}$/.test(paymentRef) && /^\d+(\.\d{1,6})?$/.test(amount)) return { page: 'tip', paymentRef, amount }
+  if (paymentRef && amount && /^ts-[a-f0-9]{32}$/.test(paymentRef) && /^(\d+(\.\d{1,6})?|open)$/.test(amount)) return { page: 'tip', paymentRef, amount }
   if (new URLSearchParams(location.search).get('admin') === '1') return { page: 'console' }
   const path = location.hash.startsWith('#/') ? location.hash.slice(1).split('?')[0] : '/'
   return path === '/console' || path.startsWith('/console/') ? { page: 'console' } : { page: 'app', path }
