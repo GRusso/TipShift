@@ -5,7 +5,7 @@ import { disputeRows, effectiveShares, type Dispute } from '../dispute'
 import { DisputeList } from './Dispute'
 import { splitShiftTips } from '../../../../../src/core/group-split.mjs'
 import { downloadCsv } from '../csv'
-import { DEMO_ADMIN_ID, closeAndDistributeDemo, savedDistributionTx, connectTestnetWallet, explorerTransaction, openPaymentSession, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
+import { DEMO_ADMIN_ID, startCollection, closeAndDistributeDemo, savedDistributionTx, connectTestnetWallet, explorerTransaction, openPaymentSession, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
 import { adminClient, previousAuthEvent, signInLinkError, AUTH_EVENT_KEY } from '../../admin'
 import { useCopy } from '../i18n'
 import { ConsoleShell, PublicFrame, type NavItem } from '../layout'
@@ -65,7 +65,7 @@ const copy = {
     registered: 'Team', nobody: 'Nobody has joined yet.', registeredOn: 'Joined',
     working: 'Working…',
     download: 'Download CSV', deleteReport: 'Delete', confirmDelete: 'Delete this report? The payout stays on-chain.', deleteFail: 'Couldn’t delete the report.', retention: 'Reports are removed after 30 days. The payout stays on-chain.', onchain: 'View on-chain ↗',
-    tipsLead: 'Show this QR to a customer. Each one is a single, exact payment.', poolState: 'Pool', poolBalance: 'Balance', connectAdmin: 'Connect location wallet', notAdmin: 'This isn’t the location’s admin wallet.', tipAmount: 'Tip (test USDC)', openSession: 'Create QR', sessionOpened: 'Ready. Show this QR to the customer.', waitingPool: 'The pool isn’t active yet.', customerQr: 'Customer QR', customerHint: 'Reveals no pool, wallet or percentage.', connectedAs: 'Connected', closeTitle: 'Close shift', closeText: 'Closes the shift, splits the tips and pays everyone. You’ll confirm twice in your wallet. Demo only, once.', closeBtn: 'Close shift and pay', closeConfirm: 'This pays out the demo pool and can’t be repeated. Continue?', closing: 'Closing…', paying: 'Paying…', confirming: 'Confirming…', closeDone: 'Done. Everyone has been paid.', closeAgain: 'Already paid out.', partial: (done: string) => `${done} paid. The rest failed, usually because a wallet isn’t set up for USDC. Fix it and press again: only the missing ones are paid.`, viewTx: 'View on-chain',
+    tipsLead: 'Show this QR to a customer. Each one is a single, exact payment.', poolState: 'Pool', poolBalance: 'Balance', connectAdmin: 'Authorize with the location wallet', notAdmin: 'This isn’t the location’s admin wallet.', tipAmount: 'Tip (test USDC)', openSession: 'Create QR', sessionOpened: 'Ready. Show this QR to the customer.', waitingPool: 'The pool isn’t active yet.', customerQr: 'Customer QR', customerHint: 'Reveals no pool, wallet or percentage.', connectedAs: 'Connected', closeTitle: 'Close shift', closeText: 'Closes the shift, splits the tips and pays everyone. You’ll confirm twice in your wallet. Demo only, once.', closeBtn: 'Close shift and pay', closeConfirm: 'This pays out the demo pool and can’t be repeated. Continue?', closing: 'Closing…', paying: 'Paying…', confirming: 'Confirming…', closeDone: 'Done. Everyone has been paid.', closeAgain: 'Already paid out.', partial: (done: string) => `${done} paid. The rest failed, usually because a wallet isn’t set up for USDC. Fix it and press again: only the missing ones are paid.`, viewTx: 'View on-chain',
     reportLead: 'The proposed split, based on who checked in. Empty groups get nothing.', noReport: 'No active shifts yet.', group: 'Group', present: 'Present', groupAmount: 'Group', each: 'Each', total: 'Total', balanceNote: 'Demo pool balance (testnet).', person: 'Person', amount: 'Amount', nobody2: 'Nobody checked in', splitTitle: 'Proposed split',
   },
   es: {
@@ -92,7 +92,7 @@ const copy = {
     registered: 'Equipo', nobody: 'Todavía no se sumó nadie.', registeredOn: 'Se sumó',
     working: 'Procesando…',
     download: 'Descargar CSV', deleteReport: 'Eliminar', confirmDelete: '¿Eliminar este reporte? El pago queda en la blockchain.', deleteFail: 'No se pudo eliminar el reporte.', retention: 'Los reportes se borran a los 30 días. El pago queda en la blockchain.', onchain: 'Ver en la blockchain ↗',
-    tipsLead: 'Mostrale este QR a un cliente. Cada uno es un pago único y exacto.', poolState: 'Pool', poolBalance: 'Saldo', connectAdmin: 'Conectar wallet del local', notAdmin: 'Esta no es la wallet administradora del local.', tipAmount: 'Propina (USDC de prueba)', openSession: 'Crear QR', sessionOpened: 'Listo. Mostrale este QR al cliente.', waitingPool: 'El pool todavía no está activo.', customerQr: 'QR del cliente', customerHint: 'No revela pool, wallets ni porcentajes.', connectedAs: 'Conectada', closeTitle: 'Cerrar turno', closeText: 'Cierra el turno, reparte las propinas y paga a todos. Vas a confirmar dos veces en tu wallet. Solo demo, una vez.', closeBtn: 'Cerrar turno y pagar', closeConfirm: 'Esto paga el pool de demostración y no se puede repetir. ¿Continuar?', closing: 'Cerrando…', paying: 'Pagando…', confirming: 'Confirmando…', closeDone: 'Listo. Todos cobraron.', closeAgain: 'Ya se pagó.', partial: (done: string) => `${done} pagados. El resto falló, normalmente porque una wallet no está preparada para USDC. Corregilo y volvé a pulsar: solo se pagan los que faltan.`, viewTx: 'Ver en la blockchain',
+    tipsLead: 'Mostrale este QR a un cliente. Cada uno es un pago único y exacto.', poolState: 'Pool', poolBalance: 'Saldo', connectAdmin: 'Autorizar con la wallet del local', notAdmin: 'Esta no es la wallet administradora del local.', tipAmount: 'Propina (USDC de prueba)', openSession: 'Crear QR', sessionOpened: 'Listo. Mostrale este QR al cliente.', waitingPool: 'El pool todavía no está activo.', customerQr: 'QR del cliente', customerHint: 'No revela pool, wallets ni porcentajes.', connectedAs: 'Conectada', closeTitle: 'Cerrar turno', closeText: 'Cierra el turno, reparte las propinas y paga a todos. Vas a confirmar dos veces en tu wallet. Solo demo, una vez.', closeBtn: 'Cerrar turno y pagar', closeConfirm: 'Esto paga el pool de demostración y no se puede repetir. ¿Continuar?', closing: 'Cerrando…', paying: 'Pagando…', confirming: 'Confirmando…', closeDone: 'Listo. Todos cobraron.', closeAgain: 'Ya se pagó.', partial: (done: string) => `${done} pagados. El resto falló, normalmente porque una wallet no está preparada para USDC. Corregilo y volvé a pulsar: solo se pagan los que faltan.`, viewTx: 'Ver en la blockchain',
     reportLead: 'El reparto propuesto, según quién hizo check-in. Los grupos vacíos no cobran.', noReport: 'Todavía no hay turnos activos.', group: 'Grupo', present: 'Presentes', groupAmount: 'Grupo', each: 'Cada uno', total: 'Total', balanceNote: 'Saldo del pool de demostración (testnet).', person: 'Persona', amount: 'Monto', nobody2: 'Nadie hizo check-in', splitTitle: 'Reparto propuesto',
   },
 }
@@ -490,7 +490,7 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
   const connect = async () => {
     setBusy(true); setNote(null)
     try {
-      const { accountId } = await connectTestnetWallet({ contractId: undefined, methodNames: ['open_payment_session'] })
+      const { accountId } = await connectTestnetWallet({ contractId: undefined, methodNames: ['start_collection', 'open_payment_session'] })
       if (accountId !== DEMO_ADMIN_ID) throw new Error(c.notAdmin)
       setAccount(accountId)
     } catch (e) { fail(e) } finally { setBusy(false) }
@@ -499,6 +499,7 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
     if (!account) return
     setBusy(true); setNote(null)
     try {
+      if (pool?.state === 'draft') { await startCollection({ accountId: account }); await load() }
       const ref = paymentRef()
       await openPaymentSession({ accountId: account, paymentRef: ref, amount: toAtomicUsdc(amount) })
       const link = `${window.location.origin}${window.location.pathname}?payment_ref=${ref}&amount=${encodeURIComponent(amount)}`
@@ -528,7 +529,7 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
     <div className="ts-card" style={{ marginTop: 16 }}>
       {account ? <p className="ts-muted">{c.connectedAs}: <b className="ts-mono">{account}</b></p> : <div className="ts-actions" style={{ marginTop: 0 }}><button className="ts-btn quiet" disabled={busy} onClick={() => void connect()}>{c.connectAdmin}</button></div>}
       <label className="ts-field">{c.tipAmount}<input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} /></label>
-      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !account || pool?.state !== 'collecting'} onClick={() => void open()}>{c.openSession}</button></div>
+      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !account || (pool?.state !== 'collecting' && pool?.state !== 'draft')} onClick={() => void open()}>{c.openSession}</button></div>
     </div>
     <div className="ts-card" style={{ marginTop: 16 }}>
       <h3 className="ts-h3">{c.closeTitle}</h3>

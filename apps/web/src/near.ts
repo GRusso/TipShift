@@ -131,6 +131,17 @@ export function paymentRef() {
   return `ts-${crypto.randomUUID().replaceAll('-', '')}`
 }
 
+export async function startCollection(params: { accountId: string }) {
+  const { actionCreators } = await import('@near-js/transactions')
+  const { wallet } = await connectTestnetWallet({ contractId: VAULT_ACCOUNT_ID, methodNames: ['start_collection', 'open_payment_session'] })
+  const outcome = await wallet.signAndSendTransaction({
+    signerId: params.accountId,
+    receiverId: VAULT_ACCOUNT_ID,
+    actions: [actionCreators.functionCall('start_collection', { pool_id: DEMO_POOL_ID }, 30_000_000_000_000n, 0n)],
+  })
+  return transactionHash(outcome)
+}
+
 export async function openPaymentSession(params: { accountId: string; paymentRef: string; amount: bigint }) {
   const { actionCreators } = await import('@near-js/transactions')
   const { wallet } = await connectTestnetWallet({
