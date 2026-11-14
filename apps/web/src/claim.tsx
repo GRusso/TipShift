@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
-import { Buffer } from 'buffer'
 import { useEffect, useMemo, useState } from 'react'
-import { connectTestnetWallet } from './near'
+import { connectTestnetWallet, nonceBuffer } from './near'
 import { openPrivateManifest, type PrivateTurnManifest } from './private-manifest'
 
 type Claim = {
@@ -67,7 +66,7 @@ export function RecipientClaim() {
       const signed = await wallet.signMessage({
         message: proof.message,
         recipient: proof.recipient,
-        nonce: Buffer.from(proof.nonce, 'base64url'),
+        nonce: nonceBuffer(proof.nonce),
         callbackUrl: window.location.href,
       })
       if (!signed?.accountId || !signed.publicKey || !signed.signature) throw new Error('The wallet did not return a signature.')

@@ -5,12 +5,12 @@ import { disputeRows, effectiveShares, type Dispute } from '../dispute'
 import { DisputeList } from './Dispute'
 import { splitShiftTips } from '../../../../../src/core/group-split.mjs'
 import { downloadCsv } from '../csv'
-import { DEMO_ADMIN_ID, type RosterMember, startCollection, closeAndDistributeDemo, savedDistributionTx, connectTestnetWallet, explorerTransaction, openPaymentSession, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
-import { adminClient, previousAuthEvent, signInLinkError, AUTH_EVENT_KEY } from '../../admin'
-import { useCopy } from '../i18n'
+import { connectTestnetWallet, connectedAccountId, walletIsConnected, type RosterMember, closeAndDistribute, createBranchPool, rechargePoolStorage, savedDistributionTx, formatNear, explorerTransaction, openPaymentSession, paymentRef, readNearBalance, readPool, readStorageCredit, toAtomicUsdc, type PoolSummary, nonceBuffer } from '../../near'
+import { adminClient, signInLinkError } from '../../admin'
+import { useCopy, useErrorText } from '../i18n'
 import { ConsoleShell, PublicFrame, type NavItem } from '../layout'
 
-type Scope = { venue_ref: string; organization_name: string | null; branch_ref: string | null; branch_label: string | null; branch_address: string | null; role: 'organization_admin' | 'branch_admin' }
+type Scope = { venue_ref: string; organization_name: string | null; branch_ref: string | null; branch_label: string | null; branch_address: string | null; role: 'organization_admin' | 'branch_admin'; branch_pool_id: string | null }
 type Invitation = { invitation_id: string; branch_label: string; manager_email: string; status: 'invited' | 'active' | 'revoked' }
 type Block = { weekday: number; startsAt: string; endsAt: string; label: string }
 type Employee = { employee_id: string; initials: string; created_at: string }
@@ -47,10 +47,15 @@ const copy = {
     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     configTitle: 'Configuration required', configText: 'The public Supabase URL and key are missing.',
     signingIn: 'One moment…',
-    signInTitle: 'Sign in', signInLead: 'Use your email and a password. New here? Create an account.', email: 'Work email', password: 'Password (8+ characters)', send: 'Sign in', create: 'Create account',
+    signInTitle: 'Sign in', signInLead: 'Sign in with your wallet, or with email and password. New here? Your wallet creates your account the first time.', email: 'Work email', password: 'Password (8+ characters)', send: 'Sign in', create: 'Create account',
+    genericFail: 'Something went wrong. Try again.',
+    walletConnected: 'Wallet connected. Press “Continue with Meteor” again to sign in.',
+    emailBtn: 'Continue with email', walletCancelled: 'The wallet request was cancelled or closed.',
+    wallet: 'Continue with Meteor', walletWorking: 'Approve in your wallet…', walletFail: 'Couldn’t sign in with the wallet. Try again.', or: 'or',
+    forgot: 'Forgot your password?', resetSent: 'If that email has an account, we sent a link to reset the password.', resetFail: 'Couldn’t send the email. Try again in a minute.', recoveryTitle: 'Choose a new password', recoveryLead: 'Pick a new password for your account (8+ characters).', newPassword: 'New password', savePassword: 'Save password', passwordSaved: 'Password updated.',
     sent: 'Check your inbox.', sendFail: 'Wrong email or password.', accountFail: 'Couldn’t create the account. Use 8+ characters.',
     linkError: (e: string) => `That link didn’t work (${e}). Request a new one and open it right away.`,
-    signOut: 'Sign out', noScope: 'No location yet for this account.',
+    signOut: 'Sign out', signedAs: 'Signed in as', roleOwner: 'Company owner', roleAdmin: 'Location admin', viaWallet: 'wallet', viaEmail: 'email', walletConnectedNow: 'Connected wallet', walletNotConnected: 'No wallet connected', walletConnectBtn: 'Connect wallet', walletNoPool: 'No pool yet for this location. This is the wallet balance that will pay the network fees.', noScope: 'No location yet for this account.',
     company: 'Company', orgName: 'Company name', saveOrg: 'Save', edit: 'Edit', cancel: 'Cancel', orgFirst: 'Name your company first.',
     locations: 'Locations', noLocations: 'No locations yet.', locName: 'Location name', locAddress: 'Address (optional)', addLoc: 'Add location', open: 'Open',
     managers: 'Managers', managersLead: 'One manager per location. They never see employee wallets.', managerEmail: 'Manager email', chooseLoc: 'Choose a location', invite: 'Invite', revoke: 'Revoke',
@@ -61,14 +66,19 @@ const copy = {
     groupsTitle: 'Groups', groupsLead: 'One QR per group. People in a group split equally.', groupName: 'Group name', share: '% of tips', capacity: 'People', addGroup: 'Add group', createShift: 'Create shift', created: 'Shift created. Show each QR to its group.',
     shareWarn: 'Percentages must add up to 100%.', createFail: 'Couldn’t create the shift. Check the dates and groups.',
     noRoster: 'Nobody has signed in to a shift yet, so there is nobody to pay.',
-    dashActive: 'Active shifts', dashGroups: 'Groups', dashPresent: 'People present', dashTips: 'Tips collected', dashNone: 'No active shifts right now. Create one in Shifts.', dashOf: 'of', dashPool: 'Tip pool (demo pool)',
+    dashActive: 'Active shifts', dashGroups: 'Groups', dashPresent: 'People present', dashTips: 'Tips collected', dashNone: 'No active shifts right now. Create one in Shifts.', dashOf: 'of', dashPool: 'Tip pool of this location',
     activeShifts: 'Active shifts', noShifts: 'No active shifts.', refresh: 'Refresh', checkedIn: 'checked in', reserved: 'reserved', reserve: 'Reserve a place', pickEmployee: 'Pick a person', regTitle: 'Join link', regSub: 'ONCE PER PERSON', regHint: 'Your team scans this once to join.', openLink: 'Open', copyLink: 'Copy link', copied: 'Copied. Send it on WhatsApp.', enlarge: 'Enlarge QR', close: 'Close', shiftOf: 'SHIFT', scanHint: 'Scan and sign to check in.', placesLeft: 'places',
     updated: 'Updated.', regLead: 'Everyone joins once with their own wallet. You see only initials.', issue: 'Create join link', replace: 'Replace join link', issued: 'New link created. The old one no longer works.', issueFail: 'Couldn’t create the link.',
     registered: 'Team', nobody: 'Nobody has joined yet.', registeredOn: 'Joined',
     working: 'Working…',
     download: 'Download CSV', deleteReport: 'Delete', confirmDelete: 'Delete this report? The payout stays on-chain.', deleteFail: 'Couldn’t delete the report.', retention: 'Reports are removed after 30 days. The payout stays on-chain.', onchain: 'View on-chain ↗',
-    tipsLead: 'Show this QR to a customer. Each QR works for one payment: the customer chooses the amount.', poolState: 'Pool', poolBalance: 'Balance', connectAdmin: 'Authorize with the location wallet', notAdmin: 'This isn’t the location’s admin wallet.', tipAmount: 'Tip (test USDC, optional)', anyAmount: 'Any amount', openSession: 'Create QR', sessionOpened: 'Ready. Show this QR to the customer.', waitingPool: 'The pool isn’t active yet.', customerQr: 'Customer QR', customerHint: 'Reveals no pool, wallet or percentage.', connectedAs: 'Connected', closeTitle: 'Close shift', closeText: 'Closes the shift, splits the tips and pays everyone. You’ll confirm twice in your wallet.', closeBtn: 'Close shift and pay', closeConfirm: 'This pays out the demo pool and can’t be repeated. Continue?', closing: 'Closing…', paying: 'Paying…', confirming: 'Confirming…', closeDone: 'Done. Everyone has been paid.', closeAgain: 'Already paid out.', partial: (done: string) => `${done} paid. The rest failed, usually because a wallet isn’t set up for USDC. Fix it and press again: only the missing ones are paid.`, viewTx: 'View on-chain',
-    reportLead: 'The proposed split, based on who checked in. Empty groups get nothing.', noReport: 'No active shifts yet.', group: 'Group', present: 'Present', groupAmount: 'Group', each: 'Each', total: 'Total', balanceNote: 'Demo pool balance (testnet).', person: 'Person', amount: 'Amount', nobody2: 'Nobody checked in', splitTitle: 'Proposed split',
+    tipsLead: 'Show this QR to a customer. Each QR works for one payment: the customer chooses the amount.', poolState: 'Pool', poolBalance: 'Balance', connectAdmin: 'Authorize with the location wallet', notAdmin: 'This isn’t the location’s admin wallet.', tipAmount: 'Tip (test USDC, optional)', anyAmount: 'Any amount', openSession: 'Create QR', sessionOpened: 'Ready. Show this QR to the customer.', waitingPool: 'The pool isn’t active yet.', customerQr: 'Customer QR', customerHint: 'Reveals no pool, wallet or percentage.', connectedAs: 'Connected', closeTitle: 'Close shift', closeText: 'Closes the shift, splits the tips and pays everyone. You’ll confirm twice in your wallet.', closeBtn: 'Close shift and pay', closeConfirm: 'This closes the shift and pays everyone from the pool. It can’t be repeated. Continue?', closing: 'Closing…', paying: 'Paying…', confirming: 'Confirming…', closeDone: 'Done. Everyone has been paid.', closeAgain: 'Already paid out.', partial: (done: string) => `${done} paid. The rest failed, usually because a wallet isn’t set up for USDC. Fix it and press again: only the missing ones are paid.`, viewTx: 'View on-chain',
+    revokePool: 'Revoke this pool and create another', revokeConfirm: 'This unlinks the pool from this location so you can create a new one. Continue?', revokeConfirmFunds: (amount: string) => `The pool still holds ${amount}. Those tips stay in the old pool and only its administrator wallet can pay them out. Unlink it anyway?`, revokeFail: 'Couldn’t revoke the pool.', revoked: 'Pool unlinked. You can create a new one.',
+    poolStates: { draft: 'Draft', collecting: 'Collecting tips', distributable: 'Ready to pay', paying: 'Paying', distributed: 'Paid' } as Record<string, string>, inviteStates: { invited: 'invited', active: 'active', revoked: 'revoked' } as Record<string, string>,
+    noPoolTitle: 'Set up this location’s tip pool', ownerCreatesPool: 'The company owner has to create this location’s pool first. Ask them to do it from the “Customer QR” tab.', noPoolText: 'One time only, by the company owner. Your wallet creates the pool that holds this location’s tips and becomes its administrator. It pays the small storage reserve and the gas of each close.', createPool: 'Create pool with my wallet', creatingPool: 'Creating…', poolCreated: 'Pool created. You can now create customer QRs.', poolSaveFail: 'The pool was created but couldn’t be saved. Try again.',
+    walletTitle: 'Location wallet', walletText: 'The wallet that closes shifts and pays the network fee. Only managers and owners see this.', walletGas: 'NEAR for fees', walletReserve: 'Pool storage reserve', walletAccount: 'Administrator wallet', walletLow: 'Low NEAR balance. Add NEAR to this wallet so you can close shifts.', recharge: 'Add to reserve (0.2 NEAR)', rechargeDone: 'Reserve topped up.', rechargeFail: 'Couldn’t top up.',
+    disputeOpen: 'A dispute is still open. Settle it in Reports before closing the shift.',
+    reportLead: 'The proposed split, based on who checked in. Empty groups get nothing.', noReport: 'No active shifts yet.', group: 'Group', present: 'Present', groupAmount: 'Group', each: 'Each', total: 'Total', balanceNote: 'Location pool balance (testnet).', person: 'Person', amount: 'Amount', nobody2: 'Nobody checked in', splitTitle: 'Proposed split',
   },
   es: {
     ribbon: 'Gerente · Testnet',
@@ -76,10 +86,15 @@ const copy = {
     days: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
     configTitle: 'Falta configuración', configText: 'Faltan la URL pública de Supabase y la clave.',
     signingIn: 'Un momento…',
-    signInTitle: 'Ingresá', signInLead: 'Usá tu email y una contraseña. ¿Primera vez? Creá tu cuenta.', email: 'Email de trabajo', password: 'Contraseña (8+ caracteres)', send: 'Ingresar', create: 'Crear cuenta',
+    signInTitle: 'Ingresá', signInLead: 'Ingresá con tu wallet, o con email y contraseña. ¿Primera vez? Tu wallet crea tu cuenta al ingresar.', email: 'Email de trabajo', password: 'Contraseña (8+ caracteres)', send: 'Ingresar', create: 'Crear cuenta',
+    genericFail: 'Algo salió mal. Probá de nuevo.',
+    walletConnected: 'Wallet conectada. Tocá “Continuar con Meteor” otra vez para ingresar.',
+    emailBtn: 'Continuar con email', walletCancelled: 'Se canceló o se cerró la solicitud de la wallet.',
+    wallet: 'Continuar con Meteor', walletWorking: 'Aprobá en tu wallet…', walletFail: 'No se pudo ingresar con la wallet. Probá de nuevo.', or: 'o',
+    forgot: '¿Olvidaste tu contraseña?', resetSent: 'Si ese email tiene una cuenta, te enviamos un enlace para restablecer la contraseña.', resetFail: 'No se pudo enviar el correo. Probá de nuevo en un minuto.', recoveryTitle: 'Elegí una nueva contraseña', recoveryLead: 'Elegí una contraseña nueva para tu cuenta (8+ caracteres).', newPassword: 'Contraseña nueva', savePassword: 'Guardar contraseña', passwordSaved: 'Contraseña actualizada.',
     sent: 'Revisá tu correo.', sendFail: 'Email o contraseña incorrectos.', accountFail: 'No se pudo crear la cuenta. Usá 8+ caracteres.',
     linkError: (e: string) => `Ese link no funcionó (${e}). Pedí uno nuevo y abrilo enseguida.`,
-    signOut: 'Salir', noScope: 'Esta cuenta todavía no tiene locales.',
+    signOut: 'Salir', signedAs: 'Sesión de', roleOwner: 'Dueño de la empresa', roleAdmin: 'Admin del local', viaWallet: 'wallet', viaEmail: 'email', walletConnectedNow: 'Wallet conectada', walletNotConnected: 'Sin wallet conectada', walletConnectBtn: 'Conectar wallet', walletNoPool: 'Este local todavía no tiene pool. Este es el saldo de la wallet que pagará las comisiones de red.', noScope: 'Esta cuenta todavía no tiene locales.',
     company: 'Empresa', orgName: 'Nombre de la empresa', saveOrg: 'Guardar', edit: 'Editar', cancel: 'Cancelar', orgFirst: 'Primero poné nombre a tu empresa.',
     locations: 'Locales', noLocations: 'Todavía no hay locales.', locName: 'Nombre del local', locAddress: 'Dirección (opcional)', addLoc: 'Agregar local', open: 'Abrir',
     managers: 'Gerentes', managersLead: 'Un gerente por local. Nunca ve las wallets del equipo.', managerEmail: 'Email del gerente', chooseLoc: 'Elegí un local', invite: 'Invitar', revoke: 'Revocar',
@@ -90,14 +105,19 @@ const copy = {
     groupsTitle: 'Grupos', groupsLead: 'Un QR por grupo. Dentro de un grupo se reparte en partes iguales.', groupName: 'Nombre del grupo', share: '% de propinas', capacity: 'Personas', addGroup: 'Agregar grupo', createShift: 'Crear turno', created: 'Turno creado. Mostrá cada QR a su grupo.',
     shareWarn: 'Los porcentajes deben sumar 100%.', createFail: 'No se pudo crear el turno. Revisá las fechas y los grupos.',
     noRoster: 'Todavía nadie firmó el ingreso a un turno, no hay a quién pagar.',
-    dashActive: 'Turnos activos', dashGroups: 'Grupos', dashPresent: 'Personas presentes', dashTips: 'Propinas juntadas', dashNone: 'No hay turnos activos ahora. Creá uno en Turnos.', dashOf: 'de', dashPool: 'Pozo de propinas (pool demo)',
+    dashActive: 'Turnos activos', dashGroups: 'Grupos', dashPresent: 'Personas presentes', dashTips: 'Propinas juntadas', dashNone: 'No hay turnos activos ahora. Creá uno en Turnos.', dashOf: 'de', dashPool: 'Pool de propinas de este local',
     activeShifts: 'Turnos activos', noShifts: 'No hay turnos activos.', refresh: 'Actualizar', checkedIn: 'presentes', reserved: 'reservado', reserve: 'Reservar un lugar', pickEmployee: 'Elegí una persona', regTitle: 'Link de alta', regSub: 'UNA VEZ POR PERSONA', regHint: 'Tu equipo lo escanea una vez para sumarse.', openLink: 'Abrir', copyLink: 'Copiar link', copied: 'Copiado. Mandalo por WhatsApp.', enlarge: 'Agrandar QR', close: 'Cerrar', shiftOf: 'TURNO', scanHint: 'Escaneá y firmá para entrar.', placesLeft: 'lugares',
     updated: 'Actualizado.', regLead: 'Cada persona se suma una vez con su propia wallet. Vos ves solo las iniciales.', issue: 'Crear link de alta', replace: 'Reemplazar link de alta', issued: 'Link nuevo creado. El anterior ya no funciona.', issueFail: 'No se pudo crear el link.',
     registered: 'Equipo', nobody: 'Todavía no se sumó nadie.', registeredOn: 'Se sumó',
     working: 'Procesando…',
     download: 'Descargar CSV', deleteReport: 'Eliminar', confirmDelete: '¿Eliminar este reporte? El pago queda en la blockchain.', deleteFail: 'No se pudo eliminar el reporte.', retention: 'Los reportes se borran a los 30 días. El pago queda en la blockchain.', onchain: 'Ver en la blockchain ↗',
-    tipsLead: 'Mostrale este QR a un cliente. Cada QR sirve para un pago: el cliente elige el monto.', poolState: 'Pool', poolBalance: 'Saldo', connectAdmin: 'Autorizar con la wallet del local', notAdmin: 'Esta no es la wallet administradora del local.', tipAmount: 'Propina (USDC de prueba, opcional)', anyAmount: 'Cualquier monto', openSession: 'Crear QR', sessionOpened: 'Listo. Mostrale este QR al cliente.', waitingPool: 'El pool todavía no está activo.', customerQr: 'QR del cliente', customerHint: 'No revela pool, wallets ni porcentajes.', connectedAs: 'Conectada', closeTitle: 'Cerrar turno', closeText: 'Cierra el turno, reparte las propinas y paga a todos. Vas a confirmar dos veces en tu wallet.', closeBtn: 'Cerrar turno y pagar', closeConfirm: 'Esto paga el pool de demostración y no se puede repetir. ¿Continuar?', closing: 'Cerrando…', paying: 'Pagando…', confirming: 'Confirmando…', closeDone: 'Listo. Todos cobraron.', closeAgain: 'Ya se pagó.', partial: (done: string) => `${done} pagados. El resto falló, normalmente porque una wallet no está preparada para USDC. Corregilo y volvé a pulsar: solo se pagan los que faltan.`, viewTx: 'Ver en la blockchain',
-    reportLead: 'El reparto propuesto, según quién hizo check-in. Los grupos vacíos no cobran.', noReport: 'Todavía no hay turnos activos.', group: 'Grupo', present: 'Presentes', groupAmount: 'Grupo', each: 'Cada uno', total: 'Total', balanceNote: 'Saldo del pool de demostración (testnet).', person: 'Persona', amount: 'Monto', nobody2: 'Nadie hizo check-in', splitTitle: 'Reparto propuesto',
+    tipsLead: 'Mostrale este QR a un cliente. Cada QR sirve para un pago: el cliente elige el monto.', poolState: 'Pool', poolBalance: 'Saldo', connectAdmin: 'Autorizar con la wallet del local', notAdmin: 'Esta no es la wallet administradora del local.', tipAmount: 'Propina (USDC de prueba, opcional)', anyAmount: 'Cualquier monto', openSession: 'Crear QR', sessionOpened: 'Listo. Mostrale este QR al cliente.', waitingPool: 'El pool todavía no está activo.', customerQr: 'QR del cliente', customerHint: 'No revela pool, wallets ni porcentajes.', connectedAs: 'Conectada', closeTitle: 'Cerrar turno', closeText: 'Cierra el turno, reparte las propinas y paga a todos. Vas a confirmar dos veces en tu wallet.', closeBtn: 'Cerrar turno y pagar', closeConfirm: 'Esto cierra el turno y paga a todos desde el pool. No se puede repetir. ¿Continuar?', closing: 'Cerrando…', paying: 'Pagando…', confirming: 'Confirmando…', closeDone: 'Listo. Todos cobraron.', closeAgain: 'Ya se pagó.', partial: (done: string) => `${done} pagados. El resto falló, normalmente porque una wallet no está preparada para USDC. Corregilo y volvé a pulsar: solo se pagan los que faltan.`, viewTx: 'Ver en la blockchain',
+    revokePool: 'Revocar este pool y crear otro', revokeConfirm: 'Esto desvincula el pool de este local para que puedas crear uno nuevo. ¿Continuar?', revokeConfirmFunds: (amount: string) => `El pool todavía tiene ${amount}. Esas propinas quedan en el pool anterior y solo su wallet administradora puede pagarlas. ¿Desvincularlo igual?`, revokeFail: 'No se pudo revocar el pool.', revoked: 'Pool desvinculado. Ya podés crear uno nuevo.',
+    poolStates: { draft: 'Borrador', collecting: 'Juntando propinas', distributable: 'Lista para pagar', paying: 'Pagando', distributed: 'Pagada' } as Record<string, string>, inviteStates: { invited: 'invitado', active: 'activo', revoked: 'revocado' } as Record<string, string>,
+    noPoolTitle: 'Configurá el pool de propinas de este local', ownerCreatesPool: 'El dueño de la empresa tiene que crear primero el pool de este local. Pedile que lo haga desde la pestaña “QR del cliente”.', noPoolText: 'Se hace una sola vez, por el dueño de la empresa. Tu wallet crea el pool que guarda las propinas del local y queda como su administradora. Paga una pequeña reserva de almacenamiento y el gas de cada cierre.', createPool: 'Crear pool con mi wallet', creatingPool: 'Creando…', poolCreated: 'Pool creado. Ya podés crear QR para los clientes.', poolSaveFail: 'Se creó el pool pero no se pudo guardar. Probá de nuevo.',
+    walletTitle: 'Wallet del local', walletText: 'La wallet que cierra los turnos y paga la comisión de red. Solo la ven gerentes y dueños.', walletGas: 'NEAR para comisiones', walletReserve: 'Reserva de almacenamiento del pool', walletAccount: 'Wallet administradora', walletLow: 'Saldo de NEAR bajo. Cargá NEAR en esta wallet para poder cerrar turnos.', recharge: 'Sumar a la reserva (0,2 NEAR)', rechargeDone: 'Reserva recargada.', rechargeFail: 'No se pudo recargar.',
+    disputeOpen: 'Hay una disputa abierta. Resolvela en Reportes antes de cerrar el turno.',
+    reportLead: 'El reparto propuesto, según quién hizo check-in. Los grupos vacíos no cobran.', noReport: 'Todavía no hay turnos activos.', group: 'Grupo', present: 'Presentes', groupAmount: 'Grupo', each: 'Cada uno', total: 'Total', balanceNote: 'Saldo del pool del local (testnet).', person: 'Persona', amount: 'Monto', nobody2: 'Nadie hizo check-in', splitTitle: 'Reparto propuesto',
   },
 }
 
@@ -120,15 +140,82 @@ function QrModal({ title, sub, qr, hint, onClose }: { title: string; sub: string
   </div>
 }
 
+function Recovery({ onDone }: { onDone: () => void }) {
+  const c = useCopy(copy)
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const save = async () => {
+    if (!adminClient) return
+    setBusy(true); setMessage(null)
+    const { error } = await adminClient.auth.updateUser({ password })
+    setBusy(false)
+    if (error) setMessage(c.accountFail); else onDone()
+  }
+  return <PublicFrame ribbon={c.ribbon}><div className="ts-solo"><div className="ts-card">
+    <p className="ts-eyebrow">TIPSHIFT</p>
+    <h1 className="ts-h2">{c.recoveryTitle}</h1>
+    <p className="ts-lead" style={{ fontSize: 14 }}>{c.recoveryLead}</p>
+    <label className="ts-field">{c.newPassword}<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" /></label>
+    {message && <div className="ts-notice bad" role="alert">{message}</div>}
+    <div className="ts-actions"><button className="ts-btn primary" disabled={busy || password.length < 8} onClick={() => void save()}>{c.savePassword}</button></div>
+  </div></div></PublicFrame>
+}
+
 function SignIn() {
   const c = useCopy(copy)
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
   const [password, setPassword] = useState('')
+  const [showEmail, setShowEmail] = useState(false)
+  const reset = async () => {
+    if (!adminClient) return
+    setBusy(true); setMessage(null); setInfo(null)
+    const { error } = await adminClient.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/?admin=1` })
+    setBusy(false)
+    if (error) setMessage(c.resetFail); else setInfo(c.resetSent)
+  }
+  // The server says why it refused (restricted key, expired challenge…); it is shown so a failure can be understood.
+  const refusal = async (error: unknown) => {
+    try { const body = await (error as { context?: Response }).context?.json(); if (body?.error) return String(body.error) } catch { /* no body */ }
+    return null
+  }
+  const walletLogin = async () => {
+    if (!adminClient) return
+    setBusy(true); setMessage(null); setInfo(c.walletWorking)
+    try {
+      // A browser only lets a click open one wallet window. The first time, connecting uses that click, so
+      // signing needs a second one; once the wallet is connected a single click signs.
+      if (!(await walletIsConnected())) {
+        await connectTestnetWallet({})
+        setInfo(c.walletConnected); return
+      }
+      const start = await adminClient.functions.invoke('tipshift-claims', { body: { action: 'wallet_login_start' } })
+      const challenge = start.data as { nonce: string; recipient: string; message: string } | null
+      if (start.error || !challenge?.nonce) throw new Error(`start:${(await refusal(start.error)) ?? 'unreachable'}`)
+      const { wallet } = await connectTestnetWallet({})
+      let signed
+      try { signed = await wallet.signMessage({ message: challenge.message, recipient: challenge.recipient, nonce: nonceBuffer(challenge.nonce) }) }
+      catch (err) { throw new Error(`cancelled:${err instanceof Error ? err.message : String(err)}`) }
+      if (!signed?.accountId || !signed.publicKey || !signed.signature) throw new Error('cancelled:no signature')
+      const done = await adminClient.functions.invoke('tipshift-claims', { body: { action: 'wallet_login_complete', accountId: signed.accountId, publicKey: signed.publicKey, signature: signed.signature, nonce: challenge.nonce } })
+      const token = (done.data as { tokenHash?: string } | null)?.tokenHash
+      if (done.error || !token) throw new Error(`complete:${(await refusal(done.error)) ?? 'unreachable'}`)
+      const { error } = await adminClient.auth.verifyOtp({ token_hash: token, type: 'magiclink' })
+      if (error) throw new Error(`session:${error.message}`)
+      setInfo(null)
+    } catch (e) {
+      setInfo(null)
+      const m = e instanceof Error ? e.message : ''
+      console.error('wallet sign-in', e)
+      setMessage(m.startsWith('cancelled') ? `${c.walletCancelled} (${m.slice(10)})` : `${c.walletFail}${m ? ` (${m})` : ''}`)
+    } finally { setBusy(false) }
+  }
   const run = async (create: boolean) => {
     if (!adminClient) return
-    setBusy(true); setMessage(null)
+    setBusy(true); setMessage(null); setInfo(null)
     const { error } = create ? await adminClient.auth.signUp({ email, password }) : await adminClient.auth.signInWithPassword({ email, password })
     setBusy(false); if (error) setMessage(create ? c.accountFail : c.sendFail)
   }
@@ -137,11 +224,18 @@ function SignIn() {
     <h1 className="ts-h2">{c.signInTitle}</h1>
     <p className="ts-lead" style={{ fontSize: 14 }}>{c.signInLead}</p>
     {signInLinkError && <div className="ts-notice bad" role="alert">{c.linkError(signInLinkError)}</div>}
-    {!signInLinkError && previousAuthEvent && <div className="ts-notice">{previousAuthEvent}</div>}
-    <label className="ts-field">{c.email}<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>
-    <label className="ts-field">{c.password}<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></label>
     {message && <div className="ts-notice bad" role="alert">{message}</div>}
-    <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !email || password.length < 8} onClick={() => void run(false)}>{c.send}</button><button className="ts-btn" disabled={busy || !email || password.length < 8} onClick={() => void run(true)}>{c.create}</button></div>
+    {info && <div className="ts-notice" role="status">{info}</div>}
+    <div className="ts-actions">
+      <button className="ts-btn primary" disabled={busy} onClick={() => void walletLogin()}>{c.wallet}</button>
+      <button className="ts-btn" disabled={busy} aria-expanded={showEmail} onClick={() => setShowEmail((v) => !v)}>{c.emailBtn}</button>
+    </div>
+    {showEmail && <div style={{ marginTop: 18 }}>
+      <label className="ts-field">{c.email}<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>
+      <label className="ts-field">{c.password}<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></label>
+      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !email || password.length < 8} onClick={() => void run(false)}>{c.send}</button><button className="ts-btn" disabled={busy || !email || password.length < 8} onClick={() => void run(true)}>{c.create}</button></div>
+      <div className="ts-actions"><button className="ts-btn quiet small" disabled={busy || !email} onClick={() => void reset()}>{c.forgot}</button></div>
+    </div>}
   </div></div></PublicFrame>
 }
 
@@ -149,11 +243,12 @@ export function Console() {
   const c = useCopy(copy)
   const [ready, setReady] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
+  const [recovery, setRecovery] = useState(false)
   useEffect(() => {
     if (!adminClient) return
     void adminClient.auth.getSession().then(({ data }) => { setSession(data.session); setReady(true) })
     const { data: sub } = adminClient.auth.onAuthStateChange((event, next) => {
-      try { window.localStorage.setItem(AUTH_EVENT_KEY, `${event} at ${new Date().toLocaleTimeString()}`) } catch { /* ignore */ }
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true)
       setSession(next); setReady(true)
     })
     return () => sub.subscription.unsubscribe()
@@ -161,6 +256,7 @@ export function Console() {
   if (!adminClient) return <PublicFrame ribbon={c.ribbon}><div className="ts-solo"><div className="ts-card"><h1 className="ts-h2">{c.configTitle}</h1><p className="ts-lead">{c.configText}</p></div></div></PublicFrame>
   if (!ready) return <PublicFrame ribbon={c.ribbon}><div className="ts-solo"><div className="ts-card"><div className="ts-notice">{c.signingIn}</div></div></div></PublicFrame>
   if (!session) return <SignIn />
+  if (recovery) return <Recovery onDone={() => setRecovery(false)} />
   return <Signed session={session} />
 }
 
@@ -211,6 +307,7 @@ function Signed({ session }: { session: Session }) {
   const active: Tab = tab === 'company' && !owner ? 'shift' : tab
   useEffect(() => { setNote(null) }, [active, branchRef])
   const titles: Record<Tab, string> = c.nav
+  const walletName = (session.user.app_metadata as { wallet?: string } | undefined)?.wallet ?? null
 
   return <ConsoleShell
     workspace={owner?.organization_name ?? 'TipShift'}
@@ -219,13 +316,17 @@ function Signed({ session }: { session: Session }) {
       : current?.branch_label ?? c.noScope}
     nav={nav} active={active} title={titles[active]} eyebrow={current?.branch_label?.toUpperCase()}
     actions={<button type="button" className="ts-chip" onClick={() => void client.auth.signOut()}>{c.signOut}</button>}>
+    <div className="ts-card" style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+      <span><small className="ts-muted">{c.signedAs} ({walletName ? c.viaWallet : c.viaEmail})</small><br /><b className="ts-mono">{walletName ?? session.user.email}</b></span>
+      <span className="ts-chip">{current?.role === 'organization_admin' ? c.roleOwner : c.roleAdmin}</span>
+    </div>
     {note && <div className={`ts-notice${note.bad ? ' bad' : ''}`} role="status">{note.text}</div>}
-    {active === 'dashboard' && (current ? <DashboardTab userId={session.user.id} branchRef={branchRef} /> : <p className="ts-muted">{c.noScope}</p>)}
+    {active === 'dashboard' && (current ? <DashboardTab userId={session.user.id} branchRef={branchRef} poolId={current.branch_pool_id} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'company' && owner && <CompanyTab owner={owner} branches={branches} busy={busy} setBusy={setBusy} setNote={setNote} reload={refreshScopes} onOpen={(ref) => { setBranchRef(ref); window.location.hash = '#/console/shift' }} />}
     {active === 'schedule' && (current ? <ScheduleTab branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'shift' && (current ? <ShiftTab branchLabel={current.branch_label} userId={session.user.id} venueRef={venueRef} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
-    {active === 'tips' && (current ? <TipsTab branchLabel={current.branch_label} userId={session.user.id} branchRef={branchRef} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
-    {active === 'report' && (current ? <ReportTab branchLabel={current.branch_label} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
+    {active === 'tips' && (current ? <TipsTab branchLabel={current.branch_label} userId={session.user.id} branchRef={branchRef} poolId={current.branch_pool_id} isOwner={current.role === 'organization_admin'} reload={refreshScopes} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
+    {active === 'report' && (current ? <ReportTab branchLabel={current.branch_label} branchRef={branchRef} poolId={current.branch_pool_id} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'employees' && (current ? <EmployeesTab userId={session.user.id} venueRef={venueRef} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
   </ConsoleShell>
 }
@@ -268,10 +369,11 @@ function CompanyTab({ owner, branches, busy, setBusy, setNote, reload, onOpen }:
       <h2 className="ts-h3">{c.locations}</h2>
       {branches.length === 0 ? <p className="ts-muted">{c.noLocations}</p> : <div className="ts-rows">{branches.map((b) => <div className="ts-row" key={b.branch_ref}><span className="ts-avatar">{b.branch_label.slice(0, 2).toUpperCase()}</span><span><strong>{b.branch_label}</strong><small>{b.branch_address ?? ''}</small></span><button className="ts-btn quiet small" onClick={() => onOpen(b.branch_ref)}>{c.open}</button></div>)}</div>}
       <div className="ts-form-grid">
-        <label className="ts-field">{c.locName}<input disabled={!org} value={locName} maxLength={80} onChange={(e) => setLocName(e.target.value)} placeholder="Downtown" /></label>
-        <label className="ts-field">{c.locAddress}<input disabled={!org} value={locAddress} maxLength={160} onChange={(e) => setLocAddress(e.target.value)} placeholder="123 Main St" /></label>
+        <label className="ts-field">{c.locName}<input value={locName} maxLength={80} onChange={(e) => setLocName(e.target.value)} placeholder="Downtown" /></label>
+        <label className="ts-field">{c.locAddress}<input value={locAddress} maxLength={160} onChange={(e) => setLocAddress(e.target.value)} placeholder="123 Main St" /></label>
       </div>
-      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !org || !locName.trim()} onClick={() => void run(async () => {
+      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !locName.trim()} onClick={() => void run(async () => {
+        if (!org) { setNote({ text: c.orgFirst, bad: true }); setEditingOrg(true); return }
         const r = await invoke({ action: 'admin_register_branch', venueRef: owner.venue_ref, branchLabel: locName, branchAddress: locAddress })
         if (!r) { setNote({ text: c.locFail, bad: true }); return }
         setLocName(''); setLocAddress(''); await reload()
@@ -289,12 +391,12 @@ function CompanyTab({ owner, branches, busy, setBusy, setNote, reload, onOpen }:
         if (!r) { setNote({ text: c.inviteFail, bad: true }); return }
         setNote({ text: c.invited }); setInviteEmail(''); await loadInvites()
       })}>{c.invite}</button></div>
-      <div className="ts-rows" style={{ marginTop: 12 }}>{invites.filter((i) => i.status !== 'revoked').map((i) => <div className="ts-row" key={i.invitation_id}><span className="ts-avatar pending">@</span><span><strong>{i.manager_email}</strong><small>{i.branch_label} · {i.status}</small></span><button className="ts-btn quiet small" disabled={busy} onClick={() => void run(async () => { await invoke({ action: 'admin_revoke_manager', invitationId: i.invitation_id }); await loadInvites() })}>{c.revoke}</button></div>)}</div>
+      <div className="ts-rows" style={{ marginTop: 12 }}>{invites.filter((i) => i.status !== 'revoked').map((i) => <div className="ts-row" key={i.invitation_id}><span className="ts-avatar pending">@</span><span><strong>{i.manager_email}</strong><small>{i.branch_label} · {c.inviteStates[i.status] ?? i.status}</small></span><button className="ts-btn quiet small" disabled={busy} onClick={() => void run(async () => { await invoke({ action: 'admin_revoke_manager', invitationId: i.invitation_id }); await loadInvites() })}>{c.revoke}</button></div>)}</div>
     </div>
   </>
 }
 
-function DashboardTab({ userId, branchRef }: { userId: string; branchRef: string }) {
+function DashboardTab({ userId, branchRef, poolId }: { userId: string; branchRef: string; poolId: string | null }) {
   const c = useCopy(copy)
   const [rows, setRows] = useState<Record<string, Checkin[]>>({})
   const [balance, setBalance] = useState<bigint | null>(null)
@@ -309,12 +411,12 @@ function DashboardTab({ userId, branchRef }: { userId: string; branchRef: string
         if (r?.checkins) next[s.turnRef] = r.checkins
       }
       if (live) setRows(next)
-      readDemoPool().then((p) => { if (live) setBalance(p ? BigInt(p.balance) : 0n) }).catch(() => undefined)
+      if (poolId) readPool(poolId).then((p) => { if (live) setBalance(p ? BigInt(p.balance) : 0n) }).catch(() => undefined)
     }
     void read(); const t = window.setInterval(() => void read(), 10_000)
     return () => { live = false; window.clearInterval(t) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
+  }, [key, poolId])
   const present = (turnRef: string, groupRef?: string) => (rows[turnRef] ?? []).filter((r) => r.employee_id && (!groupRef || r.group_ref === groupRef)).length
   const totalPresent = active.reduce((n, s) => n + present(s.turnRef), 0)
   const totalGroups = active.reduce((n, s) => n + s.groups.length, 0)
@@ -325,6 +427,7 @@ function DashboardTab({ userId, branchRef }: { userId: string; branchRef: string
       <div className="ts-stat ts-card"><span>{c.dashPresent}</span><strong>{totalPresent}</strong></div>
       <div className="ts-stat ts-card"><span>{c.dashTips}</span><strong>{balance === null ? '—' : usdc(balance)}</strong></div>
     </div>
+    <WalletCard poolId={poolId} />
     {active.length === 0 && <div className="ts-notice" style={{ marginTop: 16 }}>{c.dashNone}</div>}
     {active.map((s) => <div className="ts-card" key={s.turnRef} style={{ marginTop: 16 }}>
       <p className="ts-eyebrow">{new Date(s.startsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })} – {new Date(s.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
@@ -527,48 +630,106 @@ function EmployeesTab({ userId, venueRef, branchRef, busy, setBusy, setNote }: T
 
 const usdc = (value: bigint) => `USDC ${(Number(value) / 1_000_000).toFixed(2)}`
 
-function TipsTab({ branchLabel, userId, branchRef, setNote }: { branchLabel: string; userId: string; branchRef: string; setNote: TabProps['setNote'] }) {
+function WalletCard({ poolId }: { poolId: string | null }) {
   const c = useCopy(copy)
+  const errText = useErrorText()
+  const [info, setInfo] = useState<{ admin: string; near: bigint; reserve: bigint | null } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ text: string; bad?: boolean } | null>(null)
+  const load = useCallback(async () => {
+    try {
+      const connected = await connectedAccountId()
+      const pool = poolId ? await readPool(poolId) : null
+      const admin = pool?.admin_id ?? connected
+      if (!admin) { setInfo(null); return }
+      const [near, reserve] = await Promise.all([readNearBalance(admin), poolId && pool ? readStorageCredit(poolId) : Promise.resolve(null)])
+      setInfo({ admin, near, reserve })
+    } catch { /* the card simply stays empty */ }
+  }, [poolId])
+  useEffect(() => { void load(); const t = window.setInterval(() => void load(), 30_000); return () => window.clearInterval(t) }, [load])
+  const low = info !== null && info.near < 100_000_000_000_000_000_000_000n
+  const recharge = async () => {
+    setBusy(true); setMsg(null)
+    try { if (!poolId) { await connectTestnetWallet({}) } else { await rechargePoolStorage({ poolId }) }; setMsg({ text: c.rechargeDone }); await load() }
+    catch (e) { setMsg({ text: errText(e, c.rechargeFail), bad: true }) }
+    finally { setBusy(false) }
+  }
+  return <div className="ts-card" style={{ marginTop: 16 }}>
+    <h3 className="ts-h3">{c.walletTitle}</h3>
+    <p className="ts-muted" style={{ fontSize: 13 }}>{c.walletText}</p>
+    <div className="ts-grid2" style={{ marginTop: 12 }}>
+      <div className="ts-stat"><span>{c.walletGas}</span><strong>{info ? `${formatNear(info.near)} NEAR` : '—'}</strong></div>
+      {poolId && <div className="ts-stat"><span>{c.walletReserve}</span><strong>{info?.reserve != null ? `${formatNear(info.reserve)} NEAR` : '—'}</strong></div>}
+    </div>
+    {!info && <p className="ts-muted" style={{ marginTop: 10, fontSize: 13 }}>{c.walletNotConnected}</p>}
+    {!poolId && info && <p className="ts-muted" style={{ marginTop: 10, fontSize: 12 }}>{c.walletNoPool}</p>}
+    {info && <p className="ts-muted" style={{ marginTop: 10, fontSize: 12 }}>{c.walletAccount}: <b className="ts-mono">{info.admin}</b></p>}
+    {low && <div className="ts-notice bad" role="alert">{c.walletLow}</div>}
+    {msg && <div className={`ts-notice${msg.bad ? ' bad' : ''}`} role="status">{msg.text}</div>}
+    <div className="ts-actions">{poolId ? <button type="button" className="ts-btn quiet small" disabled={busy || !info} onClick={() => void recharge()}>{busy ? c.working : c.recharge}</button> : <button type="button" className="ts-btn quiet small" disabled={busy} onClick={() => void recharge().then(load)}>{busy ? c.working : c.walletConnectBtn}</button>}</div>
+  </div>
+}
+
+function TipsTab({ branchLabel, userId, branchRef, poolId, isOwner, reload, setNote }: { branchLabel: string; userId: string; branchRef: string; poolId: string | null; isOwner: boolean; reload: () => Promise<void>; setNote: TabProps['setNote'] }) {
+  const c = useCopy(copy)
+  const errText = useErrorText()
   const [pool, setPool] = useState<PoolSummary | null | undefined>(undefined)
-  const [account, setAccount] = useState<string | null>(null)
   const [amount, setAmount] = useState('')
   const [qr, setQr] = useState<{ small: string; big: string; link: string } | null>(null)
   const [zoom, setZoom] = useState(false)
   const [busy, setBusy] = useState(false)
   const [step, setStep] = useState('')
-  const [distTx, setDistTx] = useState<string | null>(savedDistributionTx())
-  const load = useCallback(() => readDemoPool().then(setPool).catch(() => setPool(null)), [])
+  const [distTx, setDistTx] = useState<string | null>(poolId ? savedDistributionTx(poolId) : null)
+  const load = useCallback(async () => { if (poolId) await readPool(poolId).then(setPool).catch(() => setPool(null)) }, [poolId])
   useEffect(() => { void load(); const t = window.setInterval(() => void load(), 10_000); return () => window.clearInterval(t) }, [load])
-  const fail = (e: unknown) => setNote({ text: e instanceof Error ? e.message : String(e), bad: true })
-  const connect = async () => {
-    const { accountId } = await connectTestnetWallet({ contractId: undefined, methodNames: ['start_collection', 'open_payment_session'] })
-    if (accountId !== DEMO_ADMIN_ID) throw new Error(c.notAdmin)
-    setAccount(accountId)
-    return accountId
-  }
-  const open = async () => {
+  const fail = (e: unknown) => { const m = e instanceof Error ? e.message : String(e); setNote({ text: m === 'NOT_ADMIN' ? c.notAdmin : m === 'POOL_MISSING' ? c.waitingPool : errText(e, c.genericFail), bad: true }) }
+  const createPool = async () => {
     setBusy(true); setNote(null)
     try {
-      const account = await connect()
-      if (pool?.state === 'draft') { await startCollection({ accountId: account }); await load() }
+      const id = `tsp-${branchRef.replaceAll('-', '').slice(0, 12)}-${Array.from(crypto.getRandomValues(new Uint8Array(4)), (x) => x.toString(16).padStart(2, '0')).join('')}`
+      await createBranchPool({ poolId: id })
+      const saved = await invoke({ action: 'admin_set_branch_pool', branchRef, poolId: id })
+      if (!saved) throw new Error(c.poolSaveFail)
+      await reload(); setNote({ text: c.poolCreated })
+    } catch (e) { fail(e) } finally { setBusy(false) }
+  }
+  const revokePool = async () => {
+    const held = pool ? BigInt(pool.balance) : 0n
+    if (!window.confirm(held > 0n ? c.revokeConfirmFunds(usdc(held)) : c.revokeConfirm)) return
+    setBusy(true); setNote(null)
+    try {
+      const cleared = await invoke({ action: 'admin_clear_branch_pool', branchRef })
+      if (!cleared) throw new Error(c.revokeFail)
+      setQr(null); await reload(); setNote({ text: c.revoked })
+    } catch (e) { fail(e) } finally { setBusy(false) }
+  }
+  const open = async () => {
+    if (!poolId) return
+    setBusy(true); setNote(null)
+    try {
       const ref = paymentRef()
-      await openPaymentSession({ accountId: account, paymentRef: ref, amount: amount.trim() ? toAtomicUsdc(amount) : 0n })
-      const link = `${window.location.origin}${window.location.pathname}?payment_ref=${ref}&amount=${amount.trim() ? encodeURIComponent(amount) : 'open'}`
+      await openPaymentSession({ poolId, paymentRef: ref, amount: amount.trim() ? toAtomicUsdc(amount) : 0n })
+      const link = `${window.location.origin}${window.location.pathname}?payment_ref=${ref}&amount=${amount.trim() ? encodeURIComponent(amount) : 'open'}&pool=${encodeURIComponent(poolId)}`
       setQr({ link, small: await toDataURL(link, { width: 240, margin: 1 }), big: await toDataURL(link, { width: 720, margin: 2 }) })
       setNote({ text: c.sessionOpened }); await load()
     } catch (e) { fail(e) } finally { setBusy(false) }
   }
   // The real roster: everyone who signed in to the latest shift with check-ins, split like the report (group share, then equal parts).
-  const shiftRoster = async (): Promise<RosterMember[] | undefined> => {
-    if (pool?.state === 'paying') return undefined
+  // An approved correction replaces the original group shares. Returns the shift too, so closing can freeze it.
+  const shiftRoster = async (): Promise<{ turnRef: string; roster: RosterMember[] }> => {
     const turns = readShifts().filter((s) => s.userId === userId && s.branchRef === branchRef).sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt))
     for (const turn of turns) {
       const r = await invoke<{ roster?: { groupRef: string; shareBps: number; employeeId: string; wallet: string }[] }>({ action: 'admin_turn_roster', turnRef: turn.turnRef })
       const people = r?.roster ?? []
       if (people.length === 0) continue
-      const groups = [...new Set(people.map((p) => p.groupRef))].map((groupRef) => ({ groupRef, shareBps: people.find((p) => p.groupRef === groupRef)!.shareBps, employeeIds: people.filter((p) => p.groupRef === groupRef).map((p) => p.employeeId) }))
+      const reports = await invoke<{ reports?: { turnRef: string; disputes?: Dispute[] }[] }>({ action: 'admin_branch_reports', branchRef })
+      const disputes = reports?.reports?.find((x) => x.turnRef === turn.turnRef)?.disputes
+      if ((disputes ?? []).some((d) => d.state === 'accepted' || d.state === 'correction_voting')) throw new Error('DISPUTE_OPEN')
+      const base = [...new Set(people.map((p) => p.groupRef))].map((groupRef) => ({ groupRef, shareBps: people.find((p) => p.groupRef === groupRef)!.shareBps }))
+      const shares = new Map(effectiveShares(base, disputes).map((g) => [g.groupRef, g.shareBps]))
+      const groups = base.map((g) => ({ groupRef: g.groupRef, shareBps: shares.get(g.groupRef) ?? g.shareBps, employeeIds: people.filter((p) => p.groupRef === g.groupRef).map((p) => p.employeeId) }))
       const share = new Map(splitShiftTips({ balance: 10_000n, groups }).flatMap((g) => g.people.map((p) => [p.employeeId, Number(p.amount)] as const)))
-      return people.filter((p) => (share.get(p.employeeId) ?? 0) > 0).map((p) => ({ worker_ref: p.employeeId, near_wallet: p.wallet, share_bps: share.get(p.employeeId)! }))
+      return { turnRef: turn.turnRef, roster: people.filter((p) => (share.get(p.employeeId) ?? 0) > 0).map((p) => ({ worker_ref: p.employeeId, near_wallet: p.wallet, share_bps: share.get(p.employeeId)! })) }
     }
     throw new Error(c.noRoster)
   }
@@ -576,26 +737,50 @@ function TipsTab({ branchLabel, userId, branchRef, setNote }: { branchLabel: str
     if (!window.confirm(c.closeConfirm)) return
     setBusy(true); setNote(null)
     try {
-      const roster = await shiftRoster()
-      const done = await closeAndDistributeDemo((next) => setStep(c[next]), roster)
-      if (done.hash) setDistTx(done.hash)
+      // Resuming a payout that is already running keeps the frozen roster; otherwise freeze the shift first (no more disputes).
+      const live = await readPool(poolId!)
+      let turnRef: string | null = null
+      let roster: RosterMember[] | undefined
+      if (live?.state !== 'paying') {
+        const picked = await shiftRoster()
+        turnRef = picked.turnRef; roster = picked.roster
+        const frozen = await invoke({ action: 'admin_close_turn', turnRef, balance: live?.balance ?? '0' })
+        if (!frozen) throw new Error('DISPUTE_OPEN')
+      }
+      const done = await closeAndDistribute(poolId!, (next) => setStep(c[next]), roster)
+      if (done.hash) {
+        setDistTx(done.hash)
+        turnRef ??= readShifts().filter((s) => s.userId === userId && s.branchRef === branchRef).sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt))[0]?.turnRef ?? null
+        if (turnRef) await invoke({ action: 'admin_close_turn', turnRef, txHash: done.hash })
+      }
       setNote({ text: c.closeDone }); await load()
     } catch (e) {
       const m = e instanceof Error ? e.message : String(e)
-      setNote({ text: m === 'NOT_ADMIN' ? c.notAdmin : m === 'ALREADY_DISTRIBUTED' ? c.closeAgain : m.startsWith('PARTIAL:') ? c.partial(m.slice(8)) : m, bad: true })
+      setNote({ text: m === 'DISPUTE_OPEN' ? c.disputeOpen : m === 'NOT_ADMIN' ? c.notAdmin : m === 'POOL_MISSING' ? c.waitingPool : m === 'ALREADY_DISTRIBUTED' ? c.closeAgain : m.startsWith('PARTIAL:') ? c.partial(m.slice(8)) : errText(e, c.genericFail), bad: true })
     } finally { setBusy(false); setStep('') }
   }
+  if (!poolId) return <>
+    <p className="ts-lead" style={{ fontSize: 14 }}>{c.tipsLead}</p>
+    <div className="ts-card" style={{ marginTop: 16 }}>
+      <h3 className="ts-h3">{c.noPoolTitle}</h3>
+      <p className="ts-muted" style={{ fontSize: 13 }}>{c.noPoolText}</p>
+      {isOwner
+        ? <div className="ts-actions"><button type="button" className="ts-btn primary" disabled={busy} onClick={() => void createPool()}>{busy ? c.creatingPool : c.createPool}</button></div>
+        : <div className="ts-notice">{c.ownerCreatesPool}</div>}
+    </div>
+  </>
   return <>
     <p className="ts-lead" style={{ fontSize: 14 }}>{c.tipsLead}</p>
     <div className="ts-grid2" style={{ marginTop: 18 }}>
-      <div className="ts-stat ts-card"><span>{c.poolState}</span><strong>{pool ? pool.state : pool === null ? '—' : '…'}</strong></div>
+      <div className="ts-stat ts-card"><span>{c.poolState}</span><strong>{pool ? (c.poolStates[pool.state] ?? pool.state) : pool === null ? '—' : '…'}</strong></div>
       <div className="ts-stat ts-card"><span>{c.poolBalance}</span><strong>{pool ? usdc(BigInt(pool.balance)) : '—'}</strong></div>
     </div>
     {pool === null && <div className="ts-notice bad">{c.waitingPool}</div>}
+    <WalletCard poolId={poolId} />
+    {isOwner && <div className="ts-actions" style={{ marginTop: 8 }}><button type="button" className="ts-btn danger small" disabled={busy} onClick={() => void revokePool()}>{c.revokePool}</button></div>}
     <div className="ts-card" style={{ marginTop: 16 }}>
-      {account && <p className="ts-muted">{c.connectedAs}: <b className="ts-mono">{account}</b></p>}
       <label className="ts-field">{c.tipAmount}<input inputMode="decimal" value={amount} placeholder={c.anyAmount} onChange={(e) => setAmount(e.target.value)} /></label>
-      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || (pool?.state !== 'collecting' && pool?.state !== 'draft')} onClick={() => void open()}>{c.openSession}</button></div>
+      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !pool} onClick={() => void open()}>{c.openSession}</button></div>
     </div>
     <div className="ts-card" style={{ marginTop: 16 }}>
       <h3 className="ts-h3">{c.closeTitle}</h3>
@@ -617,21 +802,21 @@ function TipsTab({ branchLabel, userId, branchRef, setNote }: { branchLabel: str
 
 type ReportPerson = { employeeId: string; initials: string; signed: boolean }
 type ReportGroup = { groupRef: string; label: string | null; shareBps: number; capacity: number; people: ReportPerson[] }
-type Report = { turnRef: string; startsAt: string; endsAt: string; distributionTx: string | null; groups: ReportGroup[]; disputes?: Dispute[] }
+type Report = { turnRef: string; startsAt: string; endsAt: string; distributionTx: string | null; closed?: boolean; closingBalance?: string | null; groups: ReportGroup[]; disputes?: Dispute[] }
 
-function ReportTab({ branchLabel, branchRef, busy, setBusy, setNote }: TabProps & { branchLabel: string; branchRef: string }) {
+function ReportTab({ branchLabel, branchRef, poolId, busy, setBusy, setNote }: TabProps & { branchLabel: string; branchRef: string; poolId: string | null }) {
   const c = useCopy(copy)
   const [pool, setPool] = useState<PoolSummary | null | undefined>(undefined)
   const [reports, setReports] = useState<Report[] | null>(null)
   const load = useCallback(async () => {
-    readDemoPool().then(setPool).catch(() => setPool(null))
+    if (poolId) readPool(poolId).then(setPool).catch(() => setPool(null))
     const r = await invoke<{ reports?: Report[] }>({ action: 'admin_branch_reports', branchRef })
     setReports(Array.isArray(r?.reports) ? r.reports : [])
-  }, [branchRef])
+  }, [branchRef, poolId])
   useEffect(() => { void load() }, [load])
   const balance = pool ? BigInt(pool.balance) : 0n
   const hhmm = (v: string) => new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const split = (report: Report) => splitShiftTips({ balance, groups: effectiveShares(report.groups, report.disputes).map((g) => ({ groupRef: g.groupRef, shareBps: g.shareBps, employeeIds: g.people.filter((p) => p.signed).map((p) => p.employeeId) })) })
+  const split = (report: Report) => splitShiftTips({ balance: report.closed && report.closingBalance ? BigInt(report.closingBalance) : balance, groups: effectiveShares(report.groups, report.disputes).map((g) => ({ groupRef: g.groupRef, shareBps: g.shareBps, employeeIds: g.people.filter((p) => p.signed).map((p) => p.employeeId) })) })
   const label = (g: ReportGroup, i: number) => g.label || `${c.group} ${i + 1}`
 
   const download = (report: Report) => {

@@ -166,7 +166,7 @@ function TestnetCheckout({ copy }: { copy: Copy }) {
     try {
       const atomic = toAtomicUsdc(amount)
       const reference = paymentRef()
-      const hash = await openPaymentSession({ accountId, paymentRef: reference, amount: atomic })
+      const hash = await openPaymentSession({ poolId: DEMO_POOL_ID, paymentRef: reference, amount: atomic })
       const link = new URL(window.location.href)
       link.searchParams.set('payment_ref', reference)
       link.searchParams.set('amount', amount)

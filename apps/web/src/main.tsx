@@ -25,7 +25,7 @@ function Root() {
   switch (route.page) {
     case 'register': return <EmployeeRegister token={route.token} />
     case 'checkin': return <CheckIn token={route.token} />
-    case 'tip': return <Tip paymentRef={route.paymentRef} amount={route.amount} />
+    case 'tip': return <Tip paymentRef={route.paymentRef} amount={route.amount} poolId={route.poolId} />
     case 'claim': return <Legacy><RecipientClaim /></Legacy>
     case 'console': return <Console />
     default:

@@ -455,6 +455,26 @@ async function handleAdminGroupCheckins(request: Request, payload: Record<string
   return { status: 200, payload: { checkins: data } }
 }
 
+// Manager / owner: remember which on-chain pool belongs to the location.
+async function handleAdminSetBranchPool(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const branchRef = requiredUuid(payload.branchRef, 'branchRef')
+  const poolId = requiredText(payload.poolId, 'poolId', 128)
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(poolId)) return { status: 400, payload: { error: 'pool_invalid' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_set_branch_pool', { p_admin_user_id: principal.userId, p_branch_ref: branchRef, p_pool_id: poolId })
+  return error || data !== true ? { status: 409, payload: { error: 'pool_unavailable' } } : { status: 200, payload: { saved: true } }
+}
+
+// Owner only: unlink a location's pool so the owner can create a new one (for example if the old wallet is lost).
+async function handleAdminClearBranchPool(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const branchRef = requiredUuid(payload.branchRef, 'branchRef')
+  const { data, error } = await principal.service.rpc('tipshift_admin_set_branch_pool', { p_admin_user_id: principal.userId, p_branch_ref: branchRef, p_pool_id: null })
+  return error || data !== true ? { status: 409, payload: { error: 'pool_unavailable' } } : { status: 200, payload: { cleared: true } }
+}
+
 // Manager closing a shift: the people who signed in and their wallets, so the on-chain roster is exactly them.
 async function handleAdminTurnRoster(request: Request, payload: Record<string, unknown>) {
   const principal = await authenticatedAdmin(request)
@@ -467,6 +487,57 @@ async function handleAdminTurnRoster(request: Request, payload: Record<string, u
     for (const row of data) people.push({ groupRef: row.group_ref, shareBps: row.share_bps, employeeId: row.employee_id, wallet: await unsealWallet(`branch:${row.branch_ref}`, fromBytea(row.wallet_ciphertext)) })
     return { status: 200, payload: { roster: people } }
   } catch { return { status: 503, payload: { error: 'roster_unavailable' } } }
+}
+
+// Manager closing a shift: freezes disputes and keeps the balance that is being split; later links the on-chain transaction.
+async function handleAdminCloseTurn(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const turnRef = requiredUuid(payload.turnRef, 'turnRef')
+  const balance = payload.balance === undefined || payload.balance === null ? null : requiredText(payload.balance, 'balance', 30)
+  if (balance !== null && !/^[0-9]{1,30}$/.test(balance)) return { status: 400, payload: { error: 'balance_invalid' } }
+  const txHash = payload.txHash === undefined || payload.txHash === null ? null : requiredText(payload.txHash, 'txHash', 128)
+  if (txHash !== null && !/^[A-Za-z0-9]{32,128}$/.test(txHash)) return { status: 400, payload: { error: 'tx_invalid' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_close_turn', { p_admin_user_id: principal.userId, p_turn_ref: turnRef, p_balance: balance, p_tx: txHash })
+  return error || data !== true ? { status: 409, payload: { error: 'close_unavailable' } } : { status: 200, payload: { closed: true } }
+}
+
+function walletLoginStatement() {
+  return 'TipShift sign-in. This signature proves control of this NEAR account; it moves no funds.'
+}
+
+// Sign in with a NEAR wallet instead of e-mail and password. The wallet signs a one-time challenge; the
+// server maps the account to its own Auth user (a synthetic address that never receives mail) and returns
+// a one-time token the browser exchanges for a normal session.
+async function handleWalletLogin(action: 'wallet_login_start' | 'wallet_login_complete', payload: Record<string, unknown>): Promise<{ status: number; payload: Record<string, unknown> }> {
+  const { service } = clients()
+  const refuse = (error: string, status = 401) => ({ status, payload: { error } })
+  if (action === 'wallet_login_start') {
+    const nonce = crypto.getRandomValues(new Uint8Array(32))
+    const { error } = await service.rpc('tipshift_report_challenge_start', { p_nonce: bytea(nonce) })
+    return error ? refuse('challenge_unavailable', 503) : { status: 200, payload: { nonce: base64url(nonce), recipient: requiredEnvironment('TIPSHIFT_NEP413_RECIPIENT'), message: walletLoginStatement() } }
+  }
+  let accountId: string, publicKey: string, signature: Uint8Array, nonce: Uint8Array
+  try {
+    accountId = requiredText(payload.accountId, 'accountId', 64).toLowerCase()
+    publicKey = requiredText(payload.publicKey, 'publicKey', 256)
+    signature = base64(payload.signature, 'signature')
+    nonce = base64(payload.nonce, 'nonce', true)
+  } catch { return refuse('malformed_request', 400) }
+  if (nonce.byteLength !== 32 || !/^[a-z0-9._-]{2,64}$/.test(accountId)) return refuse('invalid_account', 400)
+  const provider = new JsonRpcProvider({ url: requiredEnvironment('TIPSHIFT_NEAR_RPC_URL') })
+  try { await assertFullAccess(provider, accountId, publicKey) } catch { return refuse('restricted_key') }
+  try { await verifyMessage({ signerAccountId: accountId, signerPublicKey: publicKey, payload: { message: walletLoginStatement(), nonce, recipient: requiredEnvironment('TIPSHIFT_NEP413_RECIPIENT') }, signature, provider }) } catch { return refuse('bad_signature') }
+  const consumed = await service.rpc('tipshift_report_challenge_consume', { p_nonce: bytea(nonce) })
+  if (consumed.error || consumed.data !== true) return refuse('challenge_expired')
+  const email = `${accountId}@wallet.tipshift.pages.dev`
+  // Only accounts that this flow created may be signed in by it: an e-mail/password user who happened to
+  // register the same synthetic address must never be taken over by a wallet (or the other way around).
+  await service.auth.admin.createUser({ email, email_confirm: true, app_metadata: { wallet: accountId } })
+  const { data, error } = await service.auth.admin.generateLink({ type: 'magiclink', email })
+  if (error || !data?.properties?.hashed_token) return refuse('session_unavailable', 503)
+  if (data.user?.app_metadata?.wallet !== accountId) return refuse('account_conflict')
+  return { status: 200, payload: { tokenHash: data.properties.hashed_token } }
 }
 
 async function handleAdminReservePlace(request: Request, payload: Record<string, unknown>) {
@@ -628,6 +699,18 @@ Deno.serve(async (request) => {
       const result = await handleAdminTurnRoster(request, payload)
       return json(result.payload, result.status, cors)
     }
+    if (action === 'admin_set_branch_pool') {
+      const result = await handleAdminSetBranchPool(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_clear_branch_pool') {
+      const result = await handleAdminClearBranchPool(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_close_turn') {
+      const result = await handleAdminCloseTurn(request, payload)
+      return json(result.payload, result.status, cors)
+    }
     if (action === 'admin_reserve_place') {
       const result = await handleAdminReservePlace(request, payload)
       return json(result.payload, result.status, cors)
@@ -639,6 +722,10 @@ Deno.serve(async (request) => {
     if (action === 'report_start' || action === 'report_list' || action === 'report_hide' || action === 'report_dispute_open' || action === 'report_dispute_vote' || action === 'report_dispute_withdraw') {
       const result = await handleEmployeeReports(action, payload)
       return result ? json(result, 200, cors) : json({ error: 'reports_unavailable' }, 404, cors)
+    }
+    if (action === 'wallet_login_start' || action === 'wallet_login_complete') {
+      const result = await handleWalletLogin(action, payload)
+      return json(result.payload, result.status, cors)
     }
     if (action === 'admin_branch_reports') {
       const result = await handleAdminBranchReports(request, payload)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { TOKEN_ACCOUNT_ID, connectTestnetWallet, explorerTransaction, payTip, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
-import { useCopy } from '../i18n'
+import { TOKEN_ACCOUNT_ID, connectTestnetWallet, explorerTransaction, payTip, readPool, toAtomicUsdc, type PoolSummary } from '../../near'
+import { useCopy, useErrorText } from '../i18n'
 import { PublicFrame } from '../layout'
 
 const copy = {
@@ -30,8 +30,9 @@ const copy = {
   },
 }
 
-export function Tip({ paymentRef, amount }: { paymentRef: string; amount: string }) {
+export function Tip({ paymentRef, amount, poolId }: { paymentRef: string; amount: string; poolId: string }) {
   const c = useCopy(copy)
+  const errText = useErrorText()
   const [pool, setPool] = useState<PoolSummary | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -41,7 +42,7 @@ export function Tip({ paymentRef, amount }: { paymentRef: string; amount: string
   const [typed, setTyped] = useState('')
   const chosen = isOpen ? typed.replace(',', '.') : amount
 
-  useEffect(() => { void readDemoPool().then(setPool).catch(() => setPool(null)) }, [])
+  useEffect(() => { void (poolId ? readPool(poolId) : Promise.resolve(null)).then(setPool).catch(() => setPool(null)) }, [poolId])
 
   const pay = async () => {
     setBusy(true); setMessage('')
@@ -50,7 +51,7 @@ export function Tip({ paymentRef, amount }: { paymentRef: string; amount: string
       const connection = await connectTestnetWallet({ contractId: TOKEN_ACCOUNT_ID, methodNames: ['ft_transfer_call'] })
       const hash = await payTip({ accountId: connection.accountId, paymentRef, amount: toAtomicUsdc(chosen) })
       setReceipt(hash); setPaid(true)
-    } catch (caught) { setMessage(caught instanceof Error ? caught.message : c.failed) }
+    } catch (caught) { setMessage(errText(caught, c.failed)) }
     finally { setBusy(false) }
   }
 

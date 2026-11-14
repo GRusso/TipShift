@@ -186,7 +186,12 @@ impl TipShiftVault {
         roster: Vec<Member>,
         storage_credit: U128,
     ) {
-        self.assert_owner();
+        // Any account can open a pool for its own location and becomes its admin (the caller pays the
+        // storage with its deposit). Only the contract owner may provision a pool for someone else.
+        let caller = env::predecessor_account_id();
+        if caller != self.owner_id {
+            assert_eq!(admin_id, caller, "pool admin must be the caller");
+        }
         Self::assert_pool_id(&pool_id);
         assert!(self.pools.get(&pool_id).is_none(), "pool_id already exists");
         Self::validate_roster(&roster);
@@ -284,6 +289,46 @@ impl TipShiftVault {
         let mut credits = Self::storage_credits();
         credits.insert(&pool_id, &(current - amount.0));
         Promise::new(pool.admin_id).transfer(near_sdk::NearToken::from_yoctonear(amount.0))
+    }
+
+    /// A location keeps one pool for good: after a shift is fully paid, the admin opens the next one.
+    /// Only a distributed pool with nothing left in it can be reopened; payouts and votes are cleared,
+    /// the used payment references stay used, and the voters restart from the current roster.
+    pub fn reopen_pool(&mut self, pool_id: String) {
+        let mut pool = self.pool_or_panic(&pool_id);
+        self.assert_admin(&pool);
+        assert_eq!(
+            pool.state,
+            PoolState::Distributed,
+            "only a distributed pool can start a new shift"
+        );
+        assert_eq!(pool.balance, 0, "the pool still holds funds");
+        pool.payouts = vec![];
+        pool.dispute_votes = vec![];
+        pool.correction_votes = vec![];
+        pool.objection_owner_id = None;
+        pool.deadline_at_ms = None;
+        pool.distribution_version = pool
+            .distribution_version
+            .checked_add(1)
+            .expect("distribution version overflow");
+        pool.voter_ids = pool
+            .roster
+            .iter()
+            .map(|member| member.near_wallet.clone())
+            .collect();
+        pool.state = PoolState::Collecting;
+        Self::dispute_tallies().remove(&pool_id);
+        Self::correction_tallies().remove(&pool_id);
+        self.save_pool(&pool_id, &pool);
+    }
+
+    /// Hands the pool to another wallet (for example when the location changes manager).
+    pub fn set_pool_admin(&mut self, pool_id: String, new_admin_id: AccountId) {
+        let mut pool = self.pool_or_panic(&pool_id);
+        self.assert_admin(&pool);
+        pool.admin_id = new_admin_id;
+        self.save_pool(&pool_id, &pool);
     }
 
     pub fn start_collection(&mut self, pool_id: String) {
@@ -693,10 +738,6 @@ impl TipShiftVault {
         self.pools
             .get(&pool_id.to_string())
             .expect("unknown pool_id")
-    }
-
-    fn assert_owner(&self) {
-        assert_eq!(env::predecessor_account_id(), self.owner_id, "owner only");
     }
 
     fn assert_admin(&self, pool: &Pool) {
@@ -1146,16 +1187,40 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "owner only")]
-    fn a_non_owner_cannot_provision_a_location_pool() {
+    #[should_panic(expected = "pool admin must be the caller")]
+    fn a_caller_cannot_create_a_pool_administered_by_someone_else() {
         let mut contract = new_contract();
-        context("untrusted.testnet", 1_000);
+        context_with_deposit("untrusted.testnet", 1_000, NearToken::from_near(1).as_yoctonear());
         contract.create_pool(
             "turn-1".to_string(),
             account("admin.testnet"),
             members(),
             U128(1),
         );
+    }
+
+    #[test]
+    fn any_wallet_can_create_its_own_location_pool_and_becomes_its_admin() {
+        let mut contract = new_contract();
+        context_with_deposit("manager.testnet", 1_000, NearToken::from_near(1).as_yoctonear());
+        contract.create_pool(
+            "location-1".to_string(),
+            account("manager.testnet"),
+            members(),
+            U128(NearToken::from_near(1).as_yoctonear() / 100),
+        );
+        context("manager.testnet", 1_000);
+        contract.start_collection("location-1".to_string());
+        assert_eq!(contract.pool_or_panic("location-1").admin_id, account("manager.testnet"));
+    }
+
+    #[test]
+    #[should_panic(expected = "pool_id already exists")]
+    fn a_pool_id_cannot_be_taken_twice() {
+        let mut contract = new_contract();
+        create_started_pool(&mut contract);
+        context_with_deposit("other.testnet", 1_000, NearToken::from_near(1).as_yoctonear());
+        contract.create_pool("turn-1".to_string(), account("other.testnet"), members(), U128(1));
     }
 
     #[test]
@@ -1580,5 +1645,87 @@ mod tests {
         assert_eq!(paid.payouts[0].attempts, 2);
         assert_eq!(paid.balance, 5);
         assert_eq!(paid.total_funded, 11);
+    }
+
+    fn fully_paid_pool(contract: &mut TipShiftVault) {
+        create_started_pool(contract);
+        context("admin.testnet", 1_000);
+        contract.open_payment_session("turn-1".to_string(), "checkout-1".to_string(), U128(10));
+        context("usdc.testnet", 1_000);
+        let _ = contract.ft_on_transfer(account("customer.testnet"), U128(10), r#"{"payment_ref":"checkout-1"}"#.to_string());
+        context("admin.testnet", 1_000);
+        contract.close_collection("turn-1".to_string());
+        contract.prepare_distribution("turn-1".to_string());
+        for index in 0..3u32 {
+            context_with_one_yocto("admin.testnet", 1_000);
+            let _ = contract.dispatch_payout("turn-1".to_string(), index);
+            callback_context(PromiseResult::Successful(vec![]));
+            contract.on_payout_result("turn-1".to_string(), index);
+        }
+        assert_eq!(contract.pool_or_panic("turn-1").state, PoolState::Distributed);
+    }
+
+    #[test]
+    fn a_paid_pool_can_be_reopened_for_the_next_shift_and_used_references_stay_used() {
+        let mut contract = new_contract();
+        fully_paid_pool(&mut contract);
+        context("admin.testnet", 1_000);
+        contract.reopen_pool("turn-1".to_string());
+        let pool = contract.pool_or_panic("turn-1");
+        assert_eq!(pool.state, PoolState::Collecting);
+        assert!(pool.payouts.is_empty());
+        assert_eq!(pool.balance, 0);
+        assert_eq!(pool.distribution_version, 2);
+        assert_eq!(pool.voter_ids.len(), 3);
+        contract.open_payment_session("turn-1".to_string(), "checkout-2".to_string(), U128(7));
+    }
+
+    #[test]
+    #[should_panic(expected = "payment_ref already used")]
+    fn a_reopened_pool_cannot_reuse_a_payment_reference_of_the_previous_shift() {
+        let mut contract = new_contract();
+        fully_paid_pool(&mut contract);
+        context("admin.testnet", 1_000);
+        contract.reopen_pool("turn-1".to_string());
+        contract.open_payment_session("turn-1".to_string(), "checkout-1".to_string(), U128(7));
+    }
+
+    #[test]
+    #[should_panic(expected = "only a distributed pool can start a new shift")]
+    fn a_pool_that_is_still_collecting_cannot_be_reopened() {
+        let mut contract = new_contract();
+        create_started_pool(&mut contract);
+        context("admin.testnet", 1_000);
+        contract.reopen_pool("turn-1".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "pool admin only")]
+    fn only_the_pool_admin_can_reopen_it() {
+        let mut contract = new_contract();
+        fully_paid_pool(&mut contract);
+        context("intruder.testnet", 1_000);
+        contract.reopen_pool("turn-1".to_string());
+    }
+
+    #[test]
+    fn the_admin_can_hand_the_pool_to_a_new_manager_wallet() {
+        let mut contract = new_contract();
+        create_started_pool(&mut contract);
+        context("admin.testnet", 1_000);
+        contract.set_pool_admin("turn-1".to_string(), account("new-manager.testnet"));
+        context("new-manager.testnet", 1_000);
+        contract.close_collection("turn-1".to_string());
+        assert_eq!(contract.pool_or_panic("turn-1").state, PoolState::Distributable);
+    }
+
+    #[test]
+    #[should_panic(expected = "pool admin only")]
+    fn the_previous_admin_loses_control_after_the_handover() {
+        let mut contract = new_contract();
+        create_started_pool(&mut contract);
+        context("admin.testnet", 1_000);
+        contract.set_pool_admin("turn-1".to_string(), account("new-manager.testnet"));
+        contract.close_collection("turn-1".to_string());
     }
 }

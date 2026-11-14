@@ -1,8 +1,7 @@
-import { Buffer } from 'buffer'
 import { useEffect, useMemo, useState } from 'react'
-import { connectTestnetWallet } from '../../near'
+import { connectTestnetWallet, nonceBuffer } from '../../near'
 import { callTipshift, publicClient } from '../client'
-import { useCopy, useLang } from '../i18n'
+import { useCopy, useErrorText, useLang } from '../i18n'
 import { PublicFrame } from '../layout'
 
 type Start = {
@@ -48,6 +47,7 @@ const copy = {
 
 export function CheckIn({ token }: { token: string }) {
   const c = useCopy(copy)
+  const errText = useErrorText()
   const { lang } = useLang()
   const client = useMemo(publicClient, [])
   const [info, setInfo] = useState<Start | null>(null)
@@ -73,14 +73,14 @@ export function CheckIn({ token }: { token: string }) {
       const proof = await callTipshift<Start>(client, { action: 'checkin_start', token })
       if (!proof?.nonce) throw new Error(c.unavailable)
       const { wallet } = await connectTestnetWallet({})
-      const signed = await wallet.signMessage({ message: proof.message, recipient: proof.recipient, nonce: Buffer.from(proof.nonce, 'base64url') })
+      const signed = await wallet.signMessage({ message: proof.message, recipient: proof.recipient, nonce: nonceBuffer(proof.nonce) })
       if (!signed?.accountId || !signed.publicKey || !signed.signature) throw new Error(c.noSig)
       setMessage(c.verifying)
       const done = await callTipshift<Complete>(client, { action: 'checkin_complete', token, turnRef: proof.turnRef, groupRef: proof.groupRef, branchRef: proof.branchRef, nonce: proof.nonce, accountId: signed.accountId, publicKey: signed.publicKey, signature: signed.signature })
       if (!done?.status) throw new Error(c.failed)
       setResult(done); setMessage('')
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : c.failed)
+      setMessage(errText(error, c.failed))
     } finally { setBusy(false) }
   }
 

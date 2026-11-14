@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer'
 import type { WalletSelector } from '@near-wallet-selector/core'
 
 export const TESTNET_RPC = import.meta.env.VITE_TIPSHIFT_TESTNET_RPC ?? 'https://rpc.testnet.near.org'
@@ -11,6 +12,7 @@ export type PoolSummary = {
   state: string
   balance: string
   total_funded: string
+  admin_id?: string
   roster_count: number
   voter_count: number
   payout_count: number
@@ -90,8 +92,38 @@ async function viewCall<T>(accountId: string, methodName: string, args: object):
   return decodeResult(payload.result.result) as T
 }
 
-export async function readDemoPool() {
-  return viewCall<PoolSummary | null>(VAULT_ACCOUNT_ID, 'get_pool', { pool_id: DEMO_POOL_ID })
+/** Reads any location's pool. Pools are per location: the console learns the id from the server. */
+export async function readPool(poolId: string) {
+  return viewCall<PoolSummary | null>(VAULT_ACCOUNT_ID, 'get_pool', { pool_id: poolId })
+}
+/** The fixed demonstration pool of the legacy page. */
+export const readDemoPool = () => readPool(DEMO_POOL_ID)
+
+/** NEAR left in a wallet, in yoctoNEAR: what pays the gas of closing shifts. */
+export async function readNearBalance(accountId: string): Promise<bigint> {
+  const response = await fetch(TESTNET_RPC, { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 'tipshift-balance', method: 'query', params: { request_type: 'view_account', finality: 'final', account_id: accountId } }) })
+  const payload = await response.json()
+  if (!response.ok || payload.error) throw new Error('Unable to read the wallet balance.')
+  return BigInt(payload.result.amount)
+}
+
+/** NEAR reserved in the pool for its own storage, in yoctoNEAR. */
+export async function readStorageCredit(poolId: string): Promise<bigint> {
+  return BigInt(await viewCall<string>(VAULT_ACCOUNT_ID, 'get_storage_credit', { pool_id: poolId }))
+}
+
+export const formatNear = (yocto: bigint) => (Number(yocto / 10n ** 20n) / 10_000).toFixed(3)
+
+/** Whether a wallet session already exists, so a flow can tell "just connected" from "ready to sign". */
+export async function walletIsConnected() {
+  return (await selector()).isSignedIn()
+}
+
+/** The wallet account currently connected in this browser, or null. Never opens a wallet window. */
+export async function connectedAccountId() {
+  const active = await selector()
+  return active.isSignedIn() ? active.store.getState().accounts.find((a) => a.active)?.accountId ?? null : null
 }
 
 export async function connectTestnetWallet(params: { contractId?: string; methodNames?: string[] } = {}) {
@@ -131,32 +163,57 @@ export function paymentRef() {
   return `ts-${crypto.randomUUID().replaceAll('-', '')}`
 }
 
-export async function startCollection(params: { accountId: string }) {
+const NEAR = 10n ** 24n
+const POOL_DEPOSIT = 3n * NEAR / 10n // storage of the pool record + a reserve for later shifts
+const POOL_CREDIT = NEAR / 10n
+
+/**
+ * Creates the pool of a location with the connected wallet as its admin (it pays the storage) and opens
+ * collection in the same transaction. Done once per location.
+ */
+export async function createBranchPool(params: { poolId: string }) {
+  const { wallet, accountId } = await connectTestnetWallet({})
   const { actionCreators } = await import('@near-js/transactions')
-  const { wallet } = await connectTestnetWallet({ contractId: VAULT_ACCOUNT_ID, methodNames: ['start_collection', 'open_payment_session'] })
   const outcome = await wallet.signAndSendTransaction({
-    signerId: params.accountId,
+    signerId: accountId,
     receiverId: VAULT_ACCOUNT_ID,
-    actions: [actionCreators.functionCall('start_collection', { pool_id: DEMO_POOL_ID }, 30_000_000_000_000n, 0n)],
+    actions: [
+      actionCreators.functionCall('create_pool', { pool_id: params.poolId, admin_id: accountId, roster: [{ worker_ref: 'seed', near_wallet: accountId, share_bps: 10_000 }], storage_credit: POOL_CREDIT.toString() }, 100_000_000_000_000n, POOL_DEPOSIT),
+      actionCreators.functionCall('start_collection', { pool_id: params.poolId }, 30_000_000_000_000n, 0n),
+    ],
+  })
+  await waitForPool(params.poolId, (p) => p.state === 'collecting')
+  return { accountId, hash: transactionHash(outcome) }
+}
+
+/** Adds NEAR to the pool's storage reserve (admin only). */
+export async function rechargePoolStorage(params: { poolId: string; near?: bigint }) {
+  const { wallet, accountId } = await connectTestnetWallet({})
+  const { actionCreators } = await import('@near-js/transactions')
+  const outcome = await wallet.signAndSendTransaction({
+    signerId: accountId,
+    receiverId: VAULT_ACCOUNT_ID,
+    actions: [actionCreators.functionCall('deposit_storage_credit', { pool_id: params.poolId }, 30_000_000_000_000n, params.near ?? NEAR / 5n)],
   })
   return transactionHash(outcome)
 }
 
-export async function openPaymentSession(params: { accountId: string; paymentRef: string; amount: bigint }) {
+/**
+ * Opens a checkout for the location's pool. A pool that already paid a shift is reopened in the same
+ * transaction, so the manager never has to do anything extra between shifts.
+ */
+export async function openPaymentSession(params: { poolId: string; paymentRef: string; amount: bigint }) {
   const { actionCreators } = await import('@near-js/transactions')
-  const { wallet } = await connectTestnetWallet({
-    contractId: VAULT_ACCOUNT_ID,
-    methodNames: ['open_payment_session'],
-  })
-  const outcome = await wallet.signAndSendTransaction({
-    signerId: params.accountId,
-    receiverId: VAULT_ACCOUNT_ID,
-    actions: [actionCreators.functionCall('open_payment_session', {
-      pool_id: DEMO_POOL_ID,
-      payment_ref: params.paymentRef,
-      expected_amount: params.amount.toString(),
-    }, 50_000_000_000_000n, 0n)],
-  })
+  const { wallet, accountId } = await connectTestnetWallet({})
+  const pool = await readPool(params.poolId)
+  if (!pool) throw new Error('POOL_MISSING')
+  if (pool.admin_id && pool.admin_id !== accountId) throw new Error('NOT_ADMIN')
+  const actions = [
+    ...(pool.state === 'distributed' ? [actionCreators.functionCall('reopen_pool', { pool_id: params.poolId }, 30_000_000_000_000n, 0n)] : []),
+    ...(pool.state === 'draft' ? [actionCreators.functionCall('start_collection', { pool_id: params.poolId }, 30_000_000_000_000n, 0n)] : []),
+    actionCreators.functionCall('open_payment_session', { pool_id: params.poolId, payment_ref: params.paymentRef, expected_amount: params.amount.toString() }, 50_000_000_000_000n, 0n),
+  ]
+  const outcome = await wallet.signAndSendTransaction({ signerId: accountId, receiverId: VAULT_ACCOUNT_ID, actions })
   return transactionHash(outcome)
 }
 
@@ -179,15 +236,15 @@ export async function payTip(params: { accountId: string; paymentRef: string; am
   return transactionHash(outcome)
 }
 
-const DISTRIBUTION_KEY = `tipshift-distribution-${DEMO_POOL_ID}`
-export function savedDistributionTx(): string | null {
-  try { return window.localStorage.getItem(DISTRIBUTION_KEY) } catch { return null }
+const distributionKey = (poolId: string) => `tipshift-distribution-${poolId}`
+export function savedDistributionTx(poolId: string): string | null {
+  try { return window.localStorage.getItem(distributionKey(poolId)) } catch { return null }
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-async function waitForPool(accept: (pool: PoolSummary) => boolean) {
+async function waitForPool(poolId: string, accept: (pool: PoolSummary) => boolean) {
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const pool = await readDemoPool().catch(() => null)
+    const pool = await readPool(poolId).catch(() => null)
     if (pool && accept(pool)) return pool
     await sleep(1500)
   }
@@ -203,11 +260,11 @@ const call = (actions: ActionFactory, methodName: string, args: object, deposit 
  */
 export type RosterMember = { worker_ref: string; near_wallet: string; share_bps: number }
 
-export async function closeAndDistributeDemo(onStep: (step: 'closing' | 'paying' | 'confirming') => void, roster?: RosterMember[]) {
+export async function closeAndDistribute(poolId: string, onStep: (step: 'closing' | 'paying' | 'confirming') => void, roster?: RosterMember[]) {
   const { wallet, accountId } = await connectTestnetWallet({})
-  if (accountId !== DEMO_ADMIN_ID) throw new Error('NOT_ADMIN')
-  let pool = await readDemoPool()
-  if (!pool) throw new Error('The demonstration pool is not available.')
+  let pool = await readPool(poolId)
+  if (pool?.admin_id && accountId !== pool.admin_id) throw new Error('NOT_ADMIN')
+  if (!pool) throw new Error('This location’s pool isn’t available.')
   if (pool.state === 'distributed') throw new Error('ALREADY_DISTRIBUTED')
   const { actionCreators } = await import('@near-js/transactions')
   let lastHash: string | null = null
@@ -215,12 +272,12 @@ export async function closeAndDistributeDemo(onStep: (step: 'closing' | 'paying'
   if (pool.state === 'collecting' || pool.state === 'distributable') {
     onStep('closing')
     const actions = [
-      ...(roster ? [call(actionCreators, 'set_roster', { pool_id: DEMO_POOL_ID, roster }, 0n, 30_000_000_000_000n)] : []),
-      ...(pool.state === 'collecting' ? [call(actionCreators, 'close_collection', { pool_id: DEMO_POOL_ID }, 0n, 30_000_000_000_000n)] : []),
-      call(actionCreators, 'prepare_distribution', { pool_id: DEMO_POOL_ID }, 0n, 60_000_000_000_000n),
+      ...(roster ? [call(actionCreators, 'set_roster', { pool_id: poolId, roster }, 0n, 30_000_000_000_000n)] : []),
+      ...(pool.state === 'collecting' ? [call(actionCreators, 'close_collection', { pool_id: poolId }, 0n, 30_000_000_000_000n)] : []),
+      call(actionCreators, 'prepare_distribution', { pool_id: poolId }, 0n, 60_000_000_000_000n),
     ]
     await wallet.signAndSendTransactions({ transactions: [{ signerId: accountId, receiverId: VAULT_ACCOUNT_ID, actions }] })
-    pool = await waitForPool((p) => p.state === 'paying')
+    pool = await waitForPool(poolId, (p) => p.state === 'paying')
   }
   if (pool.state !== 'paying') throw new Error(`The pool is in state "${pool.state}" and cannot be distributed.`)
 
@@ -228,7 +285,7 @@ export async function closeAndDistributeDemo(onStep: (step: 'closing' | 'paying'
   const send = (index: number) => ({
     signerId: accountId,
     receiverId: VAULT_ACCOUNT_ID,
-    actions: [call(actionCreators, 'dispatch_payout', { pool_id: DEMO_POOL_ID, payout_index: index }, 1n)],
+    actions: [call(actionCreators, 'dispatch_payout', { pool_id: poolId, payout_index: index }, 1n)],
   })
   const indexes = Array.from({ length: pool.payout_count }, (_, index) => index)
   if (pool.delivered_payout_count === 0) {
@@ -249,13 +306,13 @@ export async function closeAndDistributeDemo(onStep: (step: 'closing' | 'paying'
   onStep('confirming')
   let done: PoolSummary
   try {
-    done = await waitForPool((p) => p.state === 'distributed')
+    done = await waitForPool(poolId, (p) => p.state === 'distributed')
   } catch {
-    const latest = await readDemoPool()
+    const latest = await readPool(poolId)
     if (latest && latest.delivered_payout_count < latest.payout_count) throw new Error(`PARTIAL:${latest.delivered_payout_count}/${latest.payout_count}`)
     throw new Error('The network has not confirmed the payouts yet. Refresh in a few seconds.')
   }
-  if (lastHash) { try { window.localStorage.setItem(DISTRIBUTION_KEY, lastHash) } catch { /* link is only a convenience */ } }
+  if (lastHash) { try { window.localStorage.setItem(distributionKey(poolId), lastHash) } catch { /* link is only a convenience */ } }
   return { pool: done, hash: lastHash }
 }
 
@@ -273,4 +330,11 @@ export async function registerUsdc(accountId: string) {
     receiverId: TOKEN_ACCOUNT_ID,
     actions: [actionCreators.functionCall('storage_deposit', { account_id: accountId, registration_only: true }, 30_000_000_000_000n, 1_250_000_000_000_000_000_000n)],
   })
+}
+
+/** Decodes the base64url nonce a wallet must sign. The browser Buffer polyfill does not know the "base64url" encoding, so it is decoded by hand. */
+export function nonceBuffer(value: string) {
+  const standard = value.replace(/-/g, '+').replace(/_/g, '/')
+  const binary = atob(standard + '='.repeat((4 - standard.length % 4) % 4))
+  return Buffer.from(Uint8Array.from(binary, (character) => character.charCodeAt(0)))
 }
