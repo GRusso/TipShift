@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toDataURL } from 'qrcode'
 import { disputeRows, effectiveShares, type Dispute } from '../dispute'
 import { DisputeList } from './Dispute'
@@ -56,7 +56,7 @@ const copy = {
     managers: 'Managers', managersLead: 'One manager per location. They never see employee wallets.', managerEmail: 'Manager email', chooseLoc: 'Choose a location', invite: 'Invite', revoke: 'Revoke',
     invited: 'Invited. They can sign in with that email.', inviteFail: 'Couldn’t send the invitation.',
     orgFail: 'Use 1 to 80 characters.', locFail: 'Couldn’t add the location. Name your company first and use a unique name.',
-    scheduleLead: 'When this location works. A block that ends before it starts runs past midnight.', blockName: 'Shift name (e.g. Morning)', starts: 'Starts', ends: 'Ends', add: 'Add', remove: 'Remove', saveSchedule: 'Save schedule', scheduleSaved: 'Schedule saved.', scheduleFail: 'Couldn’t save. Check the blocks.',
+    autosaves: 'Changes save automatically.', scheduleLead: 'When this location works. A block that ends before it starts runs past midnight.', blockName: 'Shift name (e.g. Morning)', starts: 'Starts', ends: 'Ends', add: 'Add', remove: 'Remove', saveSchedule: 'Save schedule', scheduleSaved: 'Schedule saved.', scheduleFail: 'Couldn’t save. Check the blocks.',
     newShift: 'New shift', pickBlock: 'Shift', chooseBlock: 'Choose a shift', date: 'Date', needSchedule: 'Save your schedule first.',
     groupsTitle: 'Groups', groupsLead: 'One QR per group. People in a group split equally.', groupName: 'Group name', share: '% of tips', capacity: 'People', addGroup: 'Add group', createShift: 'Create shift', created: 'Shift created. Show each QR to its group.',
     shareWarn: 'Percentages must add up to 100%.', createFail: 'Couldn’t create the shift. Check the dates and groups.',
@@ -83,7 +83,7 @@ const copy = {
     managers: 'Gerentes', managersLead: 'Un gerente por local. Nunca ve las wallets del equipo.', managerEmail: 'Email del gerente', chooseLoc: 'Elegí un local', invite: 'Invitar', revoke: 'Revocar',
     invited: 'Invitado. Puede ingresar con ese email.', inviteFail: 'No se pudo enviar la invitación.',
     orgFail: 'Usá de 1 a 80 caracteres.', locFail: 'No se pudo agregar el local. Poné nombre a tu empresa y usá un nombre único.',
-    scheduleLead: 'Cuándo trabaja este local. Un bloque que termina antes de empezar sigue pasada la medianoche.', blockName: 'Nombre del turno (ej. Mañana)', starts: 'Empieza', ends: 'Termina', add: 'Agregar', remove: 'Quitar', saveSchedule: 'Guardar horario', scheduleSaved: 'Horario guardado.', scheduleFail: 'No se pudo guardar. Revisá los bloques.',
+    autosaves: 'Los cambios se guardan solos.', scheduleLead: 'Cuándo trabaja este local. Un bloque que termina antes de empezar sigue pasada la medianoche.', blockName: 'Nombre del turno (ej. Mañana)', starts: 'Empieza', ends: 'Termina', add: 'Agregar', remove: 'Quitar', saveSchedule: 'Guardar horario', scheduleSaved: 'Horario guardado.', scheduleFail: 'No se pudo guardar. Revisá los bloques.',
     newShift: 'Nuevo turno', pickBlock: 'Turno', chooseBlock: 'Elegí un turno', date: 'Fecha', needSchedule: 'Primero guardá tu horario.',
     groupsTitle: 'Grupos', groupsLead: 'Un QR por grupo. Dentro de un grupo se reparte en partes iguales.', groupName: 'Nombre del grupo', share: '% de propinas', capacity: 'Personas', addGroup: 'Agregar grupo', createShift: 'Crear turno', created: 'Turno creado. Mostrá cada QR a su grupo.',
     shareWarn: 'Los porcentajes deben sumar 100%.', createFail: 'No se pudo crear el turno. Revisá las fechas y los grupos.',
@@ -165,12 +165,13 @@ function Signed({ session }: { session: Session }) {
   const client = adminClient!
   const [scopes, setScopes] = useState<Scope[]>([])
   const [branchRef, setBranchRef] = useState('')
+  const explicitTab = useRef(TABS.some((t) => window.location.hash === `#/console/${t}`))
   const [tab, setTab] = useState<Tab>(() => TABS.find((t) => window.location.hash === `#/console/${t}`) ?? 'shift')
   const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    const on = () => { const t = TABS.find((x) => window.location.hash === `#/console/${x}`); if (t) setTab(t) }
+    const on = () => { const t = TABS.find((x) => window.location.hash === `#/console/${x}`); if (t) { explicitTab.current = true; setTab(t) } }
     window.addEventListener('hashchange', on); return () => window.removeEventListener('hashchange', on)
   }, [])
 
@@ -187,6 +188,8 @@ function Signed({ session }: { session: Session }) {
   const branches = scopes.filter((s): s is Scope & { branch_ref: string; branch_label: string } => Boolean(s.branch_ref && s.branch_label))
   const current = branches.find((b) => b.branch_ref === branchRef)
   const venueRef = current?.venue_ref ?? owner?.venue_ref ?? ''
+  // A new owner lands on Company (name, locations, managers) instead of Shifts.
+  useEffect(() => { if (owner && !explicitTab.current) { explicitTab.current = true; setTab('company') } }, [owner])
 
   const nav: NavItem[] = [
     ...(owner ? [{ id: 'company', label: c.nav.company, icon: '▣', href: '#/console/company' }] : []),
@@ -289,14 +292,23 @@ function ScheduleTab({ branchRef, busy, setBusy, setNote }: TabProps & { branchR
     setBlocks(Array.isArray(r?.blocks) ? r.blocks.map((b) => ({ weekday: b.weekday, startsAt: b.starts_at, endsAt: b.ends_at, label: b.block_label ?? '' })) : [])
   }, [branchRef])
   useEffect(() => { void load() }, [load])
-  const patch = (i: number, p: Partial<Block>) => setBlocks((cur) => cur.map((b, k) => k === i ? { ...b, ...p } : b))
-  const save = async () => {
+  const dirty = useRef(false)
+  const edit = (fn: (cur: Block[]) => Block[]) => { dirty.current = true; setBlocks(fn) }
+  const patch = (i: number, p: Partial<Block>) => edit((cur) => cur.map((b, k) => k === i ? { ...b, ...p } : b))
+  const save = useCallback(async () => {
+    dirty.current = false
     setBusy(true); setNote(null)
     const r = await invoke({ action: 'admin_set_branch_schedule', branchRef, blocks })
     setBusy(false)
-    if (!r) { setNote({ text: c.scheduleFail, bad: true }); return }
-    setNote({ text: c.scheduleSaved }); await load()
-  }
+    if (!r) { dirty.current = true; setNote({ text: c.scheduleFail, bad: true }); return }
+    setNote({ text: c.scheduleSaved })
+  }, [blocks, branchRef, c, setBusy, setNote])
+  // Autosave shortly after the last edit, like the groups do, so nothing depends on a button below the fold.
+  useEffect(() => {
+    if (!dirty.current) return
+    const t = window.setTimeout(() => { void save() }, 800)
+    return () => window.clearTimeout(t)
+  }, [blocks, save])
   return <>
     <p className="ts-lead" style={{ fontSize: 14 }}>{c.scheduleLead}</p>
     {c.days.map((day, di) => <div className="ts-card" key={day} style={{ marginTop: 12 }}>
@@ -305,11 +317,11 @@ function ScheduleTab({ branchRef, busy, setBusy, setNote }: TabProps & { branchR
         <label className="ts-field">{c.blockName}<input value={b.label} maxLength={40} placeholder="Morning" onChange={(e) => patch(i, { label: e.target.value })} /></label>
         <label className="ts-field">{c.starts}<input type="time" value={b.startsAt} onChange={(e) => patch(i, { startsAt: e.target.value })} /></label>
         <label className="ts-field">{c.ends}<input type="time" value={b.endsAt} onChange={(e) => patch(i, { endsAt: e.target.value })} /></label>
-        <button className="ts-btn quiet small" onClick={() => setBlocks((cur) => cur.filter((_, k) => k !== i))}>{c.remove}</button>
+        <button className="ts-btn quiet small" onClick={() => edit((cur) => cur.filter((_, k) => k !== i))}>{c.remove}</button>
       </div> : null)}
-      <div className="ts-actions"><button className="ts-btn quiet small" disabled={blocks.length >= 70} onClick={() => setBlocks((cur) => [...cur, { weekday: di + 1, startsAt: '09:00', endsAt: '17:00', label: '' }])}>{c.add}</button></div>
+      <div className="ts-actions"><button className="ts-btn quiet small" disabled={blocks.length >= 70} onClick={() => edit((cur) => [...cur, { weekday: di + 1, startsAt: '09:00', endsAt: '17:00', label: '' }])}>{c.add}</button></div>
     </div>)}
-    <div className="ts-actions"><button className="ts-btn primary" disabled={busy} onClick={() => void save()}>{c.saveSchedule}</button></div>
+    <p className="ts-muted" style={{ fontSize: 13 }}>{c.autosaves}</p>
   </>
 }
 
