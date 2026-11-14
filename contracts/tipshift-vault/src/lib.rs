@@ -135,6 +135,8 @@ pub struct PoolSummary {
     pub payout_count: u32,
     pub delivered_payout_count: u32,
     pub deadline_at_ms: Option<u64>,
+    /// The company owner who created the pool; keeps control even after handing it to a manager.
+    pub creator_id: Option<AccountId>,
 }
 
 #[derive(Deserialize)]
@@ -192,6 +194,7 @@ impl TipShiftVault {
         if caller != self.owner_id {
             assert_eq!(admin_id, caller, "pool admin must be the caller");
         }
+        let creator = (caller == admin_id).then(|| caller.clone());
         Self::assert_pool_id(&pool_id);
         assert!(self.pools.get(&pool_id).is_none(), "pool_id already exists");
         Self::validate_roster(&roster);
@@ -222,6 +225,9 @@ impl TipShiftVault {
         // the pool and the storage-credit ledger itself.
         let mut credits = Self::storage_credits();
         credits.insert(&pool_id, &0);
+        if let Some(creator) = creator {
+            Self::pool_creators().insert(&pool_id, &creator);
+        }
         let storage_after = env::storage_usage();
         let storage_delta = storage_after.saturating_sub(storage_before);
         let storage_cost = Self::storage_cost(storage_delta);
@@ -247,7 +253,7 @@ impl TipShiftVault {
     #[payable]
     pub fn deposit_storage_credit(&mut self, pool_id: String) {
         let pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         let deposit = env::attached_deposit().as_yoctonear();
         assert!(deposit > 0, "attached deposit must be positive");
 
@@ -277,7 +283,7 @@ impl TipShiftVault {
     pub fn withdraw_unused_storage_credit(&mut self, pool_id: String, amount: U128) -> Promise {
         assert_one_yocto();
         let pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert_eq!(
             pool.state,
             PoolState::Distributed,
@@ -296,7 +302,7 @@ impl TipShiftVault {
     /// the used payment references stay used, and the voters restart from the current roster.
     pub fn reopen_pool(&mut self, pool_id: String) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert_eq!(
             pool.state,
             PoolState::Distributed,
@@ -326,14 +332,14 @@ impl TipShiftVault {
     /// Hands the pool to another wallet (for example when the location changes manager).
     pub fn set_pool_admin(&mut self, pool_id: String, new_admin_id: AccountId) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         pool.admin_id = new_admin_id;
         self.save_pool(&pool_id, &pool);
     }
 
     pub fn start_collection(&mut self, pool_id: String) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert_eq!(pool.state, PoolState::Draft, "only a draft pool can start");
         pool.voter_ids = pool
             .roster
@@ -350,7 +356,7 @@ impl TipShiftVault {
     /// resets the voters to the same people so disputes are decided by those present.
     pub fn set_roster(&mut self, pool_id: String, roster: Vec<Member>) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert!(
             pool.state == PoolState::Collecting || pool.state == PoolState::Distributable,
             "the roster can only change before the distribution is prepared"
@@ -367,7 +373,7 @@ impl TipShiftVault {
 
     pub fn close_collection(&mut self, pool_id: String) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert_eq!(pool.state, PoolState::Collecting, "collection is not open");
         pool.state = PoolState::Distributable;
         self.save_pool(&pool_id, &pool);
@@ -382,7 +388,7 @@ impl TipShiftVault {
         expected_amount: U128,
     ) {
         let pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert_eq!(pool.state, PoolState::Collecting, "collection is not open");
         Self::assert_payment_ref(&payment_ref);
         // 0 means "open amount": the customer chooses any positive tip. The session is still
@@ -428,7 +434,7 @@ impl TipShiftVault {
         report_hash: String,
     ) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert!(
             matches!(
                 pool.state,
@@ -464,7 +470,7 @@ impl TipShiftVault {
     /// wallet or require an individual transaction.
     pub fn publish_objection_withdrawal(&mut self, pool_id: String, report_hash: String) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert!(
             matches!(pool.state, PoolState::DisputeVoting | PoolState::Disputed),
             "there is no withdrawable objection"
@@ -489,7 +495,7 @@ impl TipShiftVault {
 
     pub fn finalize_dispute_vote(&mut self, pool_id: String) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert_eq!(
             pool.state,
             PoolState::DisputeVoting,
@@ -507,7 +513,7 @@ impl TipShiftVault {
 
     pub fn submit_corrected_distribution(&mut self, pool_id: String, roster: Vec<Member>) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert_eq!(
             pool.state,
             PoolState::Disputed,
@@ -536,7 +542,7 @@ impl TipShiftVault {
         report_hash: String,
     ) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert_eq!(
             pool.state,
             PoolState::CorrectionReview,
@@ -571,7 +577,7 @@ impl TipShiftVault {
 
     pub fn finalize_correction_review(&mut self, pool_id: String) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert_eq!(
             pool.state,
             PoolState::CorrectionReview,
@@ -597,7 +603,7 @@ impl TipShiftVault {
     /// payout, paying that transfer's gas and mandatory one yocto deposit.
     pub fn prepare_distribution(&mut self, pool_id: String) {
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert_eq!(
             pool.state,
             PoolState::Distributable,
@@ -619,7 +625,7 @@ impl TipShiftVault {
     pub fn dispatch_payout(&mut self, pool_id: String, payout_index: u32) -> Promise {
         assert_one_yocto();
         let mut pool = self.pool_or_panic(&pool_id);
-        self.assert_admin(&pool);
+        self.assert_admin(&pool_id, &pool);
         assert_eq!(
             pool.state,
             PoolState::Paying,
@@ -684,7 +690,11 @@ impl TipShiftVault {
     }
 
     pub fn get_pool(&self, pool_id: String) -> Option<PoolSummary> {
-        self.pools.get(&pool_id).map(Self::summary)
+        self.pools.get(&pool_id).map(|pool| {
+            let mut summary = Self::summary(pool);
+            summary.creator_id = Self::pool_creators().get(&pool_id);
+            summary
+        })
     }
 
     /// Public aggregate only. The signed employee report remains private and
@@ -730,6 +740,7 @@ impl TipShiftVault {
             )
             .expect("delivered payout count overflow"),
             deadline_at_ms: pool.deadline_at_ms,
+            creator_id: None,
         }
     }
 
@@ -740,12 +751,12 @@ impl TipShiftVault {
             .expect("unknown pool_id")
     }
 
-    fn assert_admin(&self, pool: &Pool) {
-        assert_eq!(
-            env::predecessor_account_id(),
-            pool.admin_id,
-            "pool admin only"
-        );
+    /// The pool's administrator, or the account that created it (the company owner), may act. The creator
+    /// keeps control after handing the pool to a manager, so a manager who leaves never traps the funds.
+    fn assert_admin(&self, pool_id: &str, pool: &Pool) {
+        let caller = env::predecessor_account_id();
+        let is_creator = Self::pool_creators().get(&pool_id.to_string()).is_some_and(|creator| creator == caller);
+        assert!(caller == pool.admin_id || is_creator, "pool admin only");
     }
 
     fn assert_pool_id(pool_id: &str) {
@@ -864,6 +875,11 @@ impl TipShiftVault {
     /// the already-deployed testnet state while isolating accounting by pool.
     fn storage_credits() -> LookupMap<String, u128> {
         LookupMap::new(b"c")
+    }
+
+    /// Separate prefix (no change to the stored `Pool` layout): who created each pool.
+    fn pool_creators() -> LookupMap<String, AccountId> {
+        LookupMap::new(b"o")
     }
 
     fn used_payment_refs() -> LookupMap<String, bool> {
@@ -1727,5 +1743,34 @@ mod tests {
         context("admin.testnet", 1_000);
         contract.set_pool_admin("turn-1".to_string(), account("new-manager.testnet"));
         contract.close_collection("turn-1".to_string());
+    }
+
+    fn boss_creates_pool() -> TipShiftVault {
+        let mut contract = new_contract();
+        context_with_deposit("boss.testnet", 1_000, NearToken::from_near(1).as_yoctonear());
+        contract.create_pool("loc-1".to_string(), account("boss.testnet"), members(), U128(NearToken::from_near(1).as_yoctonear() / 100));
+        contract
+    }
+
+    #[test]
+    fn the_creator_keeps_control_after_handing_the_pool_to_a_manager() {
+        let mut contract = boss_creates_pool();
+        context("boss.testnet", 1_000);
+        contract.set_pool_admin("loc-1".to_string(), account("manager.testnet"));
+        context("manager.testnet", 1_000);
+        contract.start_collection("loc-1".to_string());
+        // The owner can still act if the manager leaves.
+        context("boss.testnet", 1_000);
+        contract.close_collection("loc-1".to_string());
+        assert_eq!(contract.pool_or_panic("loc-1").state, PoolState::Distributable);
+        assert_eq!(contract.get_pool("loc-1".to_string()).unwrap().creator_id, Some(account("boss.testnet")));
+    }
+
+    #[test]
+    #[should_panic(expected = "pool admin only")]
+    fn a_stranger_is_neither_admin_nor_creator() {
+        let mut contract = boss_creates_pool();
+        context("intruder.testnet", 1_000);
+        contract.start_collection("loc-1".to_string());
     }
 }

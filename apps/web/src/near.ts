@@ -13,6 +13,7 @@ export type PoolSummary = {
   balance: string
   total_funded: string
   admin_id?: string
+  creator_id?: string | null
   roster_count: number
   voter_count: number
   payout_count: number
@@ -113,6 +114,9 @@ export async function readStorageCredit(poolId: string): Promise<bigint> {
   return BigInt(await viewCall<string>(VAULT_ACCOUNT_ID, 'get_storage_credit', { pool_id: poolId }))
 }
 
+/** The pool's administrator (manager) or its creator (the company owner) may operate it. */
+export const mayAct = (pool: { admin_id?: string; creator_id?: string | null }, account: string) => pool.admin_id === account || pool.creator_id === account
+
 export const formatNear = (yocto: bigint) => (Number(yocto / 10n ** 20n) / 10_000).toFixed(3)
 
 /** Whether a wallet session already exists, so a flow can tell "just connected" from "ready to sign". */
@@ -192,7 +196,7 @@ export async function createBranchPool(params: { poolId: string; handTo?: string
 export async function handPoolTo(params: { poolId: string; newAdmin: string }) {
   const { wallet, accountId } = await connectTestnetWallet({})
   const pool = await readPool(params.poolId)
-  if (pool?.admin_id && pool.admin_id !== accountId) throw new Error('NOT_ADMIN')
+  if (pool?.admin_id && !mayAct(pool, accountId)) throw new Error('NOT_ADMIN')
   const { actionCreators } = await import('@near-js/transactions')
   const outcome = await wallet.signAndSendTransaction({ signerId: accountId, receiverId: VAULT_ACCOUNT_ID, actions: [actionCreators.functionCall('set_pool_admin', { pool_id: params.poolId, new_admin_id: params.newAdmin }, 30_000_000_000_000n, 0n)] })
   await waitForPool(params.poolId, (p) => p.admin_id === params.newAdmin)
@@ -236,7 +240,7 @@ export async function openPaymentSession(params: { poolId: string; paymentRef: s
   const { wallet, accountId } = await connectTestnetWallet({})
   const pool = await readPool(params.poolId)
   if (!pool) throw new Error('POOL_MISSING')
-  if (pool.admin_id && pool.admin_id !== accountId) throw new Error('NOT_ADMIN')
+  if (pool.admin_id && !mayAct(pool, accountId)) throw new Error('NOT_ADMIN')
   const actions = [
     ...(pool.state === 'distributed' ? [actionCreators.functionCall('reopen_pool', { pool_id: params.poolId }, 30_000_000_000_000n, 0n)] : []),
     ...(pool.state === 'draft' ? [actionCreators.functionCall('start_collection', { pool_id: params.poolId }, 30_000_000_000_000n, 0n)] : []),
@@ -292,7 +296,7 @@ export type RosterMember = { worker_ref: string; near_wallet: string; share_bps:
 export async function closeAndDistribute(poolId: string, onStep: (step: 'closing' | 'paying' | 'confirming') => void, roster?: RosterMember[]) {
   const { wallet, accountId } = await connectTestnetWallet({})
   let pool = await readPool(poolId)
-  if (pool?.admin_id && accountId !== pool.admin_id) throw new Error('NOT_ADMIN')
+  if (pool?.admin_id && !mayAct(pool, accountId)) throw new Error('NOT_ADMIN')
   if (!pool) throw new Error('This location’s pool isn’t available.')
   if (pool.state === 'distributed') throw new Error('ALREADY_DISTRIBUTED')
   const { actionCreators } = await import('@near-js/transactions')
