@@ -201,7 +201,9 @@ const call = (actions: ActionFactory, methodName: string, args: object, deposit 
  * Demonstration close: the branch admin wallet closes collection, freezes the split and pays every
  * payout. The roster of the demonstration pool is fixed, so this does not use the live check-ins.
  */
-export async function closeAndDistributeDemo(onStep: (step: 'closing' | 'paying' | 'confirming') => void) {
+export type RosterMember = { worker_ref: string; near_wallet: string; share_bps: number }
+
+export async function closeAndDistributeDemo(onStep: (step: 'closing' | 'paying' | 'confirming') => void, roster?: RosterMember[]) {
   const { wallet, accountId } = await connectTestnetWallet({})
   if (accountId !== DEMO_ADMIN_ID) throw new Error('NOT_ADMIN')
   let pool = await readDemoPool()
@@ -213,6 +215,7 @@ export async function closeAndDistributeDemo(onStep: (step: 'closing' | 'paying'
   if (pool.state === 'collecting' || pool.state === 'distributable') {
     onStep('closing')
     const actions = [
+      ...(roster ? [call(actionCreators, 'set_roster', { pool_id: DEMO_POOL_ID, roster }, 0n, 30_000_000_000_000n)] : []),
       ...(pool.state === 'collecting' ? [call(actionCreators, 'close_collection', { pool_id: DEMO_POOL_ID }, 0n, 30_000_000_000_000n)] : []),
       call(actionCreators, 'prepare_distribution', { pool_id: DEMO_POOL_ID }, 0n, 60_000_000_000_000n),
     ]

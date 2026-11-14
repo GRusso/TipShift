@@ -299,6 +299,27 @@ impl TipShiftVault {
         self.save_pool(&pool_id, &pool);
     }
 
+    /// Replaces the roster with the people who actually checked in. The administrator submits
+    /// the list the private TipShift service produced for the shift (wallets are decrypted
+    /// server-side, never typed by hand). Allowed only before any payout is prepared, and it
+    /// resets the voters to the same people so disputes are decided by those present.
+    pub fn set_roster(&mut self, pool_id: String, roster: Vec<Member>) {
+        let mut pool = self.pool_or_panic(&pool_id);
+        self.assert_admin(&pool);
+        assert!(
+            pool.state == PoolState::Collecting || pool.state == PoolState::Distributable,
+            "the roster can only change before the distribution is prepared"
+        );
+        assert!(pool.payouts.is_empty(), "distribution is already prepared");
+        Self::validate_roster(&roster);
+        pool.voter_ids = roster
+            .iter()
+            .map(|member| member.near_wallet.clone())
+            .collect();
+        pool.roster = roster;
+        self.save_pool(&pool_id, &pool);
+    }
+
     pub fn close_collection(&mut self, pool_id: String) {
         let mut pool = self.pool_or_panic(&pool_id);
         self.assert_admin(&pool);
@@ -1443,6 +1464,35 @@ mod tests {
             account("customer.testnet"),
             U128(4_999_999),
             r#"{"payment_ref":"checkout-1"}"#.to_string(),
+        );
+    }
+
+    #[test]
+    fn admin_can_set_the_roster_to_the_people_present_before_distribution() {
+        let mut contract = new_contract();
+        create_started_pool(&mut contract);
+        context("admin.testnet", 1_000);
+        contract.set_roster(
+            "turn-1".to_string(),
+            vec![
+                Member { worker_ref: "a".to_string(), near_wallet: account("emp9.testnet"), share_bps: 6_000 },
+                Member { worker_ref: "b".to_string(), near_wallet: account("emp8.testnet"), share_bps: 4_000 },
+            ],
+        );
+        let pool = contract.get_pool("turn-1".to_string()).unwrap();
+        assert_eq!(pool.roster_count, 2);
+        assert_eq!(pool.voter_count, 2);
+    }
+
+    #[test]
+    #[should_panic(expected = "pool admin only")]
+    fn a_stranger_cannot_set_the_roster() {
+        let mut contract = new_contract();
+        create_started_pool(&mut contract);
+        context("attacker.testnet", 1_000);
+        contract.set_roster(
+            "turn-1".to_string(),
+            vec![Member { worker_ref: "a".to_string(), near_wallet: account("attacker.testnet"), share_bps: 10_000 }],
         );
     }
 

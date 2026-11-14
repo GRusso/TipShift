@@ -79,6 +79,21 @@ async function importKey(name: string, algorithm: AlgorithmIdentifier | AesKeyAl
   return crypto.subtle.importKey('raw', bytes, algorithm, false, usages)
 }
 
+async function unsealWallet(scope: string, sealed: Uint8Array) {
+  if (sealed.byteLength < 29 || sealed[0] !== 1) throw new Error('Unsupported wallet seal.')
+  const key = await importKey('TIPSHIFT_WALLET_ENCRYPTION_KEY', { name: 'AES-GCM', length: 256 }, ['decrypt'])
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: sealed.slice(1, 13), additionalData: encoder.encode(`TipShift wallet seal v1\n${scope}`) }, key, sealed.slice(13))
+  return new TextDecoder().decode(plain)
+}
+
+function fromBytea(value: unknown) {
+  // PostgREST returns bytea as a hex string such as "\\x0102".
+  const hex = String(value).replace(/^\\x/, '')
+  const out = new Uint8Array(hex.length / 2)
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+  return out
+}
+
 async function walletCommitment(turnRef: string, accountId: string) {
   // Preserve the deployed key names and domain separation; rotating either
   // requires a deliberate migration and decryption plan, not a code deploy.
@@ -440,6 +455,20 @@ async function handleAdminGroupCheckins(request: Request, payload: Record<string
   return { status: 200, payload: { checkins: data } }
 }
 
+// Manager closing a shift: the people who signed in and their wallets, so the on-chain roster is exactly them.
+async function handleAdminTurnRoster(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const turnRef = requiredUuid(payload.turnRef, 'turnRef')
+  const { data, error } = await principal.service.rpc('tipshift_admin_turn_roster', { p_admin_user_id: principal.userId, p_turn_ref: turnRef })
+  if (error || !Array.isArray(data)) return { status: 503, payload: { error: 'admin_unavailable' } }
+  try {
+    const people = []
+    for (const row of data) people.push({ groupRef: row.group_ref, shareBps: row.share_bps, employeeId: row.employee_id, wallet: await unsealWallet(`branch:${row.branch_ref}`, fromBytea(row.wallet_ciphertext)) })
+    return { status: 200, payload: { roster: people } }
+  } catch { return { status: 503, payload: { error: 'roster_unavailable' } } }
+}
+
 async function handleAdminReservePlace(request: Request, payload: Record<string, unknown>) {
   const principal = await authenticatedAdmin(request)
   if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
@@ -593,6 +622,10 @@ Deno.serve(async (request) => {
     }
     if (action === 'admin_group_checkins') {
       const result = await handleAdminGroupCheckins(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_turn_roster') {
+      const result = await handleAdminTurnRoster(request, payload)
       return json(result.payload, result.status, cors)
     }
     if (action === 'admin_reserve_place') {

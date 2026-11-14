@@ -5,7 +5,7 @@ import { disputeRows, effectiveShares, type Dispute } from '../dispute'
 import { DisputeList } from './Dispute'
 import { splitShiftTips } from '../../../../../src/core/group-split.mjs'
 import { downloadCsv } from '../csv'
-import { DEMO_ADMIN_ID, startCollection, closeAndDistributeDemo, savedDistributionTx, connectTestnetWallet, explorerTransaction, openPaymentSession, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
+import { DEMO_ADMIN_ID, type RosterMember, startCollection, closeAndDistributeDemo, savedDistributionTx, connectTestnetWallet, explorerTransaction, openPaymentSession, paymentRef, readDemoPool, toAtomicUsdc, type PoolSummary } from '../../near'
 import { adminClient, previousAuthEvent, signInLinkError, AUTH_EVENT_KEY } from '../../admin'
 import { useCopy } from '../i18n'
 import { ConsoleShell, PublicFrame, type NavItem } from '../layout'
@@ -60,13 +60,14 @@ const copy = {
     newShift: 'New shift', pickBlock: 'Shift', chooseBlock: 'Choose a shift', date: 'Date', needSchedule: 'Save your schedule first.',
     groupsTitle: 'Groups', groupsLead: 'One QR per group. People in a group split equally.', groupName: 'Group name', share: '% of tips', capacity: 'People', addGroup: 'Add group', createShift: 'Create shift', created: 'Shift created. Show each QR to its group.',
     shareWarn: 'Percentages must add up to 100%.', createFail: 'Couldn’t create the shift. Check the dates and groups.',
+    noRoster: 'Nobody has signed in to a shift yet, so there is nobody to pay.',
     dashActive: 'Active shifts', dashGroups: 'Groups', dashPresent: 'People present', dashTips: 'Tips collected', dashNone: 'No active shifts right now. Create one in Shifts.', dashOf: 'of', dashPool: 'Tip pool (demo pool)',
     activeShifts: 'Active shifts', noShifts: 'No active shifts.', refresh: 'Refresh', checkedIn: 'checked in', reserved: 'reserved', reserve: 'Reserve a place', pickEmployee: 'Pick a person', regTitle: 'Join link', regSub: 'ONCE PER PERSON', regHint: 'Your team scans this once to join.', openLink: 'Open', copyLink: 'Copy link', copied: 'Copied. Send it on WhatsApp.', enlarge: 'Enlarge QR', close: 'Close', shiftOf: 'SHIFT', scanHint: 'Scan and sign to check in.', placesLeft: 'places',
     updated: 'Updated.', regLead: 'Everyone joins once with their own wallet. You see only initials.', issue: 'Create join link', replace: 'Replace join link', issued: 'New link created. The old one no longer works.', issueFail: 'Couldn’t create the link.',
     registered: 'Team', nobody: 'Nobody has joined yet.', registeredOn: 'Joined',
     working: 'Working…',
     download: 'Download CSV', deleteReport: 'Delete', confirmDelete: 'Delete this report? The payout stays on-chain.', deleteFail: 'Couldn’t delete the report.', retention: 'Reports are removed after 30 days. The payout stays on-chain.', onchain: 'View on-chain ↗',
-    tipsLead: 'Show this QR to a customer. Each QR works for one payment: the customer chooses the amount.', poolState: 'Pool', poolBalance: 'Balance', connectAdmin: 'Authorize with the location wallet', notAdmin: 'This isn’t the location’s admin wallet.', tipAmount: 'Tip (test USDC, optional)', anyAmount: 'Any amount', openSession: 'Create QR', sessionOpened: 'Ready. Show this QR to the customer.', waitingPool: 'The pool isn’t active yet.', customerQr: 'Customer QR', customerHint: 'Reveals no pool, wallet or percentage.', connectedAs: 'Connected', closeTitle: 'Close shift', closeText: 'Closes the shift, splits the tips and pays everyone. You’ll confirm twice in your wallet. Demo only, once.', closeBtn: 'Close shift and pay', closeConfirm: 'This pays out the demo pool and can’t be repeated. Continue?', closing: 'Closing…', paying: 'Paying…', confirming: 'Confirming…', closeDone: 'Done. Everyone has been paid.', closeAgain: 'Already paid out.', partial: (done: string) => `${done} paid. The rest failed, usually because a wallet isn’t set up for USDC. Fix it and press again: only the missing ones are paid.`, viewTx: 'View on-chain',
+    tipsLead: 'Show this QR to a customer. Each QR works for one payment: the customer chooses the amount.', poolState: 'Pool', poolBalance: 'Balance', connectAdmin: 'Authorize with the location wallet', notAdmin: 'This isn’t the location’s admin wallet.', tipAmount: 'Tip (test USDC, optional)', anyAmount: 'Any amount', openSession: 'Create QR', sessionOpened: 'Ready. Show this QR to the customer.', waitingPool: 'The pool isn’t active yet.', customerQr: 'Customer QR', customerHint: 'Reveals no pool, wallet or percentage.', connectedAs: 'Connected', closeTitle: 'Close shift', closeText: 'Closes the shift, splits the tips and pays everyone. You’ll confirm twice in your wallet.', closeBtn: 'Close shift and pay', closeConfirm: 'This pays out the demo pool and can’t be repeated. Continue?', closing: 'Closing…', paying: 'Paying…', confirming: 'Confirming…', closeDone: 'Done. Everyone has been paid.', closeAgain: 'Already paid out.', partial: (done: string) => `${done} paid. The rest failed, usually because a wallet isn’t set up for USDC. Fix it and press again: only the missing ones are paid.`, viewTx: 'View on-chain',
     reportLead: 'The proposed split, based on who checked in. Empty groups get nothing.', noReport: 'No active shifts yet.', group: 'Group', present: 'Present', groupAmount: 'Group', each: 'Each', total: 'Total', balanceNote: 'Demo pool balance (testnet).', person: 'Person', amount: 'Amount', nobody2: 'Nobody checked in', splitTitle: 'Proposed split',
   },
   es: {
@@ -88,13 +89,14 @@ const copy = {
     newShift: 'Nuevo turno', pickBlock: 'Turno', chooseBlock: 'Elegí un turno', date: 'Fecha', needSchedule: 'Primero guardá tu horario.',
     groupsTitle: 'Grupos', groupsLead: 'Un QR por grupo. Dentro de un grupo se reparte en partes iguales.', groupName: 'Nombre del grupo', share: '% de propinas', capacity: 'Personas', addGroup: 'Agregar grupo', createShift: 'Crear turno', created: 'Turno creado. Mostrá cada QR a su grupo.',
     shareWarn: 'Los porcentajes deben sumar 100%.', createFail: 'No se pudo crear el turno. Revisá las fechas y los grupos.',
+    noRoster: 'Todavía nadie firmó el ingreso a un turno, no hay a quién pagar.',
     dashActive: 'Turnos activos', dashGroups: 'Grupos', dashPresent: 'Personas presentes', dashTips: 'Propinas juntadas', dashNone: 'No hay turnos activos ahora. Creá uno en Turnos.', dashOf: 'de', dashPool: 'Pozo de propinas (pool demo)',
     activeShifts: 'Turnos activos', noShifts: 'No hay turnos activos.', refresh: 'Actualizar', checkedIn: 'presentes', reserved: 'reservado', reserve: 'Reservar un lugar', pickEmployee: 'Elegí una persona', regTitle: 'Link de alta', regSub: 'UNA VEZ POR PERSONA', regHint: 'Tu equipo lo escanea una vez para sumarse.', openLink: 'Abrir', copyLink: 'Copiar link', copied: 'Copiado. Mandalo por WhatsApp.', enlarge: 'Agrandar QR', close: 'Cerrar', shiftOf: 'TURNO', scanHint: 'Escaneá y firmá para entrar.', placesLeft: 'lugares',
     updated: 'Actualizado.', regLead: 'Cada persona se suma una vez con su propia wallet. Vos ves solo las iniciales.', issue: 'Crear link de alta', replace: 'Reemplazar link de alta', issued: 'Link nuevo creado. El anterior ya no funciona.', issueFail: 'No se pudo crear el link.',
     registered: 'Equipo', nobody: 'Todavía no se sumó nadie.', registeredOn: 'Se sumó',
     working: 'Procesando…',
     download: 'Descargar CSV', deleteReport: 'Eliminar', confirmDelete: '¿Eliminar este reporte? El pago queda en la blockchain.', deleteFail: 'No se pudo eliminar el reporte.', retention: 'Los reportes se borran a los 30 días. El pago queda en la blockchain.', onchain: 'Ver en la blockchain ↗',
-    tipsLead: 'Mostrale este QR a un cliente. Cada QR sirve para un pago: el cliente elige el monto.', poolState: 'Pool', poolBalance: 'Saldo', connectAdmin: 'Autorizar con la wallet del local', notAdmin: 'Esta no es la wallet administradora del local.', tipAmount: 'Propina (USDC de prueba, opcional)', anyAmount: 'Cualquier monto', openSession: 'Crear QR', sessionOpened: 'Listo. Mostrale este QR al cliente.', waitingPool: 'El pool todavía no está activo.', customerQr: 'QR del cliente', customerHint: 'No revela pool, wallets ni porcentajes.', connectedAs: 'Conectada', closeTitle: 'Cerrar turno', closeText: 'Cierra el turno, reparte las propinas y paga a todos. Vas a confirmar dos veces en tu wallet. Solo demo, una vez.', closeBtn: 'Cerrar turno y pagar', closeConfirm: 'Esto paga el pool de demostración y no se puede repetir. ¿Continuar?', closing: 'Cerrando…', paying: 'Pagando…', confirming: 'Confirmando…', closeDone: 'Listo. Todos cobraron.', closeAgain: 'Ya se pagó.', partial: (done: string) => `${done} pagados. El resto falló, normalmente porque una wallet no está preparada para USDC. Corregilo y volvé a pulsar: solo se pagan los que faltan.`, viewTx: 'Ver en la blockchain',
+    tipsLead: 'Mostrale este QR a un cliente. Cada QR sirve para un pago: el cliente elige el monto.', poolState: 'Pool', poolBalance: 'Saldo', connectAdmin: 'Autorizar con la wallet del local', notAdmin: 'Esta no es la wallet administradora del local.', tipAmount: 'Propina (USDC de prueba, opcional)', anyAmount: 'Cualquier monto', openSession: 'Crear QR', sessionOpened: 'Listo. Mostrale este QR al cliente.', waitingPool: 'El pool todavía no está activo.', customerQr: 'QR del cliente', customerHint: 'No revela pool, wallets ni porcentajes.', connectedAs: 'Conectada', closeTitle: 'Cerrar turno', closeText: 'Cierra el turno, reparte las propinas y paga a todos. Vas a confirmar dos veces en tu wallet.', closeBtn: 'Cerrar turno y pagar', closeConfirm: 'Esto paga el pool de demostración y no se puede repetir. ¿Continuar?', closing: 'Cerrando…', paying: 'Pagando…', confirming: 'Confirmando…', closeDone: 'Listo. Todos cobraron.', closeAgain: 'Ya se pagó.', partial: (done: string) => `${done} pagados. El resto falló, normalmente porque una wallet no está preparada para USDC. Corregilo y volvé a pulsar: solo se pagan los que faltan.`, viewTx: 'Ver en la blockchain',
     reportLead: 'El reparto propuesto, según quién hizo check-in. Los grupos vacíos no cobran.', noReport: 'Todavía no hay turnos activos.', group: 'Grupo', present: 'Presentes', groupAmount: 'Grupo', each: 'Cada uno', total: 'Total', balanceNote: 'Saldo del pool de demostración (testnet).', person: 'Persona', amount: 'Monto', nobody2: 'Nadie hizo check-in', splitTitle: 'Reparto propuesto',
   },
 }
@@ -222,7 +224,7 @@ function Signed({ session }: { session: Session }) {
     {active === 'company' && owner && <CompanyTab owner={owner} branches={branches} busy={busy} setBusy={setBusy} setNote={setNote} reload={refreshScopes} onOpen={(ref) => { setBranchRef(ref); window.location.hash = '#/console/shift' }} />}
     {active === 'schedule' && (current ? <ScheduleTab branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'shift' && (current ? <ShiftTab branchLabel={current.branch_label} userId={session.user.id} venueRef={venueRef} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
-    {active === 'tips' && (current ? <TipsTab branchLabel={current.branch_label} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
+    {active === 'tips' && (current ? <TipsTab branchLabel={current.branch_label} userId={session.user.id} branchRef={branchRef} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'report' && (current ? <ReportTab branchLabel={current.branch_label} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'employees' && (current ? <EmployeesTab userId={session.user.id} venueRef={venueRef} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
   </ConsoleShell>
@@ -525,7 +527,7 @@ function EmployeesTab({ userId, venueRef, branchRef, busy, setBusy, setNote }: T
 
 const usdc = (value: bigint) => `USDC ${(Number(value) / 1_000_000).toFixed(2)}`
 
-function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabProps['setNote'] }) {
+function TipsTab({ branchLabel, userId, branchRef, setNote }: { branchLabel: string; userId: string; branchRef: string; setNote: TabProps['setNote'] }) {
   const c = useCopy(copy)
   const [pool, setPool] = useState<PoolSummary | null | undefined>(undefined)
   const [account, setAccount] = useState<string | null>(null)
@@ -556,11 +558,26 @@ function TipsTab({ branchLabel, setNote }: { branchLabel: string; setNote: TabPr
       setNote({ text: c.sessionOpened }); await load()
     } catch (e) { fail(e) } finally { setBusy(false) }
   }
+  // The real roster: everyone who signed in to the latest shift with check-ins, split like the report (group share, then equal parts).
+  const shiftRoster = async (): Promise<RosterMember[] | undefined> => {
+    if (pool?.state === 'paying') return undefined
+    const turns = readShifts().filter((s) => s.userId === userId && s.branchRef === branchRef).sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt))
+    for (const turn of turns) {
+      const r = await invoke<{ roster?: { groupRef: string; shareBps: number; employeeId: string; wallet: string }[] }>({ action: 'admin_turn_roster', turnRef: turn.turnRef })
+      const people = r?.roster ?? []
+      if (people.length === 0) continue
+      const groups = [...new Set(people.map((p) => p.groupRef))].map((groupRef) => ({ groupRef, shareBps: people.find((p) => p.groupRef === groupRef)!.shareBps, employeeIds: people.filter((p) => p.groupRef === groupRef).map((p) => p.employeeId) }))
+      const share = new Map(splitShiftTips({ balance: 10_000n, groups }).flatMap((g) => g.people.map((p) => [p.employeeId, Number(p.amount)] as const)))
+      return people.filter((p) => (share.get(p.employeeId) ?? 0) > 0).map((p) => ({ worker_ref: p.employeeId, near_wallet: p.wallet, share_bps: share.get(p.employeeId)! }))
+    }
+    throw new Error(c.noRoster)
+  }
   const closeShift = async () => {
     if (!window.confirm(c.closeConfirm)) return
     setBusy(true); setNote(null)
     try {
-      const done = await closeAndDistributeDemo((next) => setStep(c[next]))
+      const roster = await shiftRoster()
+      const done = await closeAndDistributeDemo((next) => setStep(c[next]), roster)
       if (done.hash) setDistTx(done.hash)
       setNote({ text: c.closeDone }); await load()
     } catch (e) {

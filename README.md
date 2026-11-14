@@ -11,9 +11,9 @@ Built for the NEAR Hackathon. **Testnet only**: no real money moves.
 1. **Set up.** A business registers its company and locations and invites a manager per location.
 2. **Join.** Each employee opens a one-time link or QR, enters their initials and connects a NEAR wallet. The manager sees initials only, never wallets.
 3. **Check in.** At the start of a shift the employee scans their group's QR and signs a message (NEP-413). Signing moves no funds.
-4. **Tip.** Customers scan a public QR and pay an exact one-time amount in USDC into the shift's pool on the vault contract.
+4. **Tip.** Customers open a public link or QR, connect a wallet and pay any amount they like in USDC. Each link works for one payment and goes into the shift's pool on the vault contract. The console has a Dashboard with active shifts, groups, people present and the live tip pool.
 5. **Dispute.** Anyone who was present can object to the split. The people present vote (more than half must agree). If it is accepted, the manager proposes a corrected split and the team votes on it. The whole history is part of the shift report and its CSV.
-6. **Get paid.** The shift closes, the split is frozen on-chain and each person is paid. Groups have a percentage of the tips; people inside a group split equally; a group with nobody present gets nothing.
+6. **Get paid.** The shift closes, the manager's wallet sets the on-chain roster to the people who actually checked in (wallets are decrypted server-side, never typed by hand), the split is frozen on-chain and each person is paid. Groups have a percentage of the tips; people inside a group split equally; a group with nobody present gets nothing.
 
 Privacy by design: no names, emails, phones or seed phrases are collected from employees or customers. Reports are removed after 30 days; the final distribution stays on-chain.
 
