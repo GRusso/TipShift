@@ -540,6 +540,87 @@ async function handleWalletLogin(action: 'wallet_login_start' | 'wallet_login_co
   return { status: 200, payload: { tokenHash: data.properties.hashed_token } }
 }
 
+async function handleAdminCreateManagerInvite(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const token = requiredText(payload.token, 'token', 256)
+  if (!/^[A-Za-z0-9_-]{32,256}$/.test(token)) return { status: 400, payload: { error: 'link_invalid' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_create_manager_invite', {
+    p_admin_user_id: principal.userId,
+    p_venue_ref: requiredUuid(payload.venueRef, 'venueRef'),
+    p_branch_ref: requiredUuid(payload.branchRef, 'branchRef'),
+    p_pseudonym: requiredText(payload.pseudonym, 'pseudonym', 3),
+    p_capability_hash: bytea(await sha256(token)),
+  })
+  if (error || !Array.isArray(data) || data.length !== 1) return { status: 409, payload: { error: 'invitation_unavailable' } }
+  return { status: 201, payload: { invitation: data[0] } }
+}
+
+function managerStatement(branchRef: string, pseudonym: string) {
+  return `TipShift manager registration for branch ${branchRef} as ${pseudonym}. This signature proves control of this NEAR account, which will run this location and pay its network fees.`
+}
+
+// A manager joins a location by scanning the owner's QR and signing with a wallet; no e-mail involved.
+async function handleManagerJoin(action: 'manager_join_start' | 'manager_join_complete', payload: Record<string, unknown>): Promise<{ status: number; payload: Record<string, unknown> }> {
+  const { service } = clients()
+  const refuse = (error: string, status = 404) => ({ status, payload: { error } })
+  const hash = bytea(await sha256(requiredText(payload.token, 'token', 256)))
+  const found = await service.rpc('tipshift_manager_invite_lookup', { p_capability_hash: hash })
+  if (found.error || !Array.isArray(found.data) || found.data.length !== 1) return refuse('invitation_unavailable')
+  const { branch_ref: branchRef, branch_label: branchLabel, pseudonym } = found.data[0] as { branch_ref: string; branch_label: string; pseudonym: string }
+  if (action === 'manager_join_start') {
+    const nonce = crypto.getRandomValues(new Uint8Array(32))
+    const { error } = await service.rpc('tipshift_report_challenge_start', { p_nonce: bytea(nonce) })
+    if (error) return refuse('challenge_unavailable', 503)
+    return { status: 200, payload: { branchLabel, pseudonym, nonce: base64url(nonce), recipient: requiredEnvironment('TIPSHIFT_NEP413_RECIPIENT'), message: managerStatement(branchRef, pseudonym) } }
+  }
+  let accountId: string, publicKey: string, signature: Uint8Array, nonce: Uint8Array
+  try {
+    accountId = requiredText(payload.accountId, 'accountId', 64).toLowerCase()
+    publicKey = requiredText(payload.publicKey, 'publicKey', 256)
+    signature = base64(payload.signature, 'signature')
+    nonce = base64(payload.nonce, 'nonce', true)
+  } catch { return refuse('malformed_request', 400) }
+  if (nonce.byteLength !== 32 || !/^[a-z0-9._-]{2,64}$/.test(accountId)) return refuse('invalid_account', 400)
+  const provider = new JsonRpcProvider({ url: requiredEnvironment('TIPSHIFT_NEAR_RPC_URL') })
+  try { await assertFullAccess(provider, accountId, publicKey) } catch { return refuse('restricted_key', 401) }
+  try { await verifyMessage({ signerAccountId: accountId, signerPublicKey: publicKey, payload: { message: managerStatement(branchRef, pseudonym), nonce, recipient: requiredEnvironment('TIPSHIFT_NEP413_RECIPIENT') }, signature, provider }) } catch { return refuse('bad_signature', 401) }
+  const consumed = await service.rpc('tipshift_report_challenge_consume', { p_nonce: bytea(nonce) })
+  if (consumed.error || consumed.data !== true) return refuse('challenge_expired', 401)
+  const email = `${accountId}@wallet.tipshift.pages.dev`
+  await service.auth.admin.createUser({ email, email_confirm: true, app_metadata: { wallet: accountId } })
+  const link = await service.auth.admin.generateLink({ type: 'magiclink', email })
+  if (link.error || !link.data?.properties?.hashed_token || !link.data.user) return refuse('session_unavailable', 503)
+  if (link.data.user.app_metadata?.wallet !== accountId) return refuse('account_conflict', 401)
+  const claimed = await service.rpc('tipshift_manager_invite_claim', { p_capability_hash: hash, p_user_id: link.data.user.id, p_wallet: accountId })
+  if (claimed.error || claimed.data !== true) return refuse('already_admin', 409)
+  return { status: 200, payload: { tokenHash: link.data.properties.hashed_token, branchLabel, pseudonym, accountId } }
+}
+
+async function handleAdminBranchManager(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_branch_manager', { p_admin_user_id: principal.userId, p_branch_ref: requiredUuid(payload.branchRef, 'branchRef') })
+  if (error || !Array.isArray(data)) return { status: 503, payload: { error: 'admin_unavailable' } }
+  return { status: 200, payload: { manager: data[0] ?? null } }
+}
+
+async function handleManagerRequestFunds(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const amount = requiredText(payload.amount, 'amount', 30)
+  if (!/^[1-9][0-9]{0,26}$/.test(amount)) return { status: 400, payload: { error: 'amount_invalid' } }
+  const { data, error } = await principal.service.rpc('tipshift_manager_request_funds', { p_admin_user_id: principal.userId, p_amount_yocto: amount })
+  return error || data !== true ? { status: 409, payload: { error: 'request_unavailable' } } : { status: 200, payload: { requested: true } }
+}
+
+async function handleAdminClearFunding(request: Request, payload: Record<string, unknown>) {
+  const principal = await authenticatedAdmin(request)
+  if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
+  const { data, error } = await principal.service.rpc('tipshift_admin_clear_funding', { p_admin_user_id: principal.userId, p_invitation_id: requiredUuid(payload.invitationId, 'invitationId') })
+  return error || data !== true ? { status: 409, payload: { error: 'request_unavailable' } } : { status: 200, payload: { cleared: true } }
+}
+
 async function handleAdminReservePlace(request: Request, payload: Record<string, unknown>) {
   const principal = await authenticatedAdmin(request)
   if (!principal) return { status: 401, payload: { error: 'admin_unauthorized' } }
@@ -669,6 +750,26 @@ Deno.serve(async (request) => {
     }
     if (action === 'admin_manager_invitations') {
       const result = await handleAdminManagerInvitations(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_create_manager_invite') {
+      const result = await handleAdminCreateManagerInvite(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'manager_join_start' || action === 'manager_join_complete') {
+      const result = await handleManagerJoin(action, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_branch_manager') {
+      const result = await handleAdminBranchManager(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'manager_request_funds') {
+      const result = await handleManagerRequestFunds(request, payload)
+      return json(result.payload, result.status, cors)
+    }
+    if (action === 'admin_clear_funding') {
+      const result = await handleAdminClearFunding(request, payload)
       return json(result.payload, result.status, cors)
     }
     if (action === 'admin_branch_schedule') {

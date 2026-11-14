@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 export type Route =
   | { page: 'register'; token: string }       // employee registration link  (#register=…)
+  | { page: 'manager'; token: string }        // manager joins a location        (#manager=…)
   | { page: 'checkin'; token: string }        // group check-in QR           (#checkin=…)
   | { page: 'tip'; paymentRef: string; amount: string; poolId: string } // customer payment QR (?payment_ref=…&amount=…)
   | { page: 'claim' }                         // legacy per-slot claim link  (#claim=…)
@@ -15,6 +16,8 @@ export function resolveRoute(location: Location = window.location): Route {
   const fragment = new URLSearchParams(location.hash.slice(1))
   const register = fragment.get('register')
   if (register && TOKEN.test(register)) return { page: 'register', token: register }
+  const manager = fragment.get('manager')
+  if (manager && TOKEN.test(manager)) return { page: 'manager', token: manager }
   const checkin = fragment.get('checkin')
   if (checkin && TOKEN.test(checkin)) return { page: 'checkin', token: checkin }
   if (fragment.has('claim')) return { page: 'claim' }

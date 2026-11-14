@@ -5,13 +5,14 @@ import { disputeRows, effectiveShares, type Dispute } from '../dispute'
 import { DisputeList } from './Dispute'
 import { splitShiftTips } from '../../../../../src/core/group-split.mjs'
 import { downloadCsv } from '../csv'
-import { connectTestnetWallet, connectedAccountId, walletIsConnected, type RosterMember, closeAndDistribute, createBranchPool, rechargePoolStorage, savedDistributionTx, formatNear, explorerTransaction, openPaymentSession, paymentRef, readNearBalance, readPool, readStorageCredit, toAtomicUsdc, type PoolSummary, nonceBuffer } from '../../near'
+import { connectTestnetWallet, connectedAccountId, walletIsConnected, type RosterMember, closeAndDistribute, createBranchPool, rechargePoolStorage, savedDistributionTx, formatNear, explorerTransaction, handPoolTo, parseNear, sendNear, openPaymentSession, paymentRef, readNearBalance, readPool, readStorageCredit, toAtomicUsdc, type PoolSummary, nonceBuffer } from '../../near'
 import { adminClient, signInLinkError } from '../../admin'
 import { useCopy, useErrorText } from '../i18n'
 import { ConsoleShell, PublicFrame, type NavItem } from '../layout'
 
 type Scope = { venue_ref: string; organization_name: string | null; branch_ref: string | null; branch_label: string | null; branch_address: string | null; role: 'organization_admin' | 'branch_admin'; branch_pool_id: string | null }
-type Invitation = { invitation_id: string; branch_label: string; manager_email: string; status: 'invited' | 'active' | 'revoked' }
+type Invitation = { invitation_id: string; branch_ref: string; branch_label: string; manager_email: string | null; pseudonym: string | null; manager_wallet: string | null; status: 'invited' | 'active' | 'revoked'; funding_requested: string | null }
+type BranchManager = { pseudonym: string; manager_wallet: string; funding_requested: string | null }
 type Block = { weekday: number; startsAt: string; endsAt: string; label: string }
 type Employee = { employee_id: string; initials: string; created_at: string }
 type Group = { groupRef: string; label: string; shareBps: number; capacity: number }
@@ -55,10 +56,10 @@ const copy = {
     forgot: 'Forgot your password?', resetSent: 'If that email has an account, we sent a link to reset the password.', resetFail: 'Couldn’t send the email. Try again in a minute.', recoveryTitle: 'Choose a new password', recoveryLead: 'Pick a new password for your account (8+ characters).', newPassword: 'New password', savePassword: 'Save password', passwordSaved: 'Password updated.',
     sent: 'Check your inbox.', sendFail: 'Wrong email or password.', accountFail: 'Couldn’t create the account. Use 8+ characters.',
     linkError: (e: string) => `That link didn’t work (${e}). Request a new one and open it right away.`,
-    signOut: 'Sign out', signedAs: 'Signed in as', roleOwner: 'Company owner', roleAdmin: 'Location admin', viaWallet: 'wallet', viaEmail: 'email', walletConnectedNow: 'Connected wallet', walletNotConnected: 'No wallet connected', walletConnectBtn: 'Connect wallet', walletNoPool: 'No pool yet for this location. This is the wallet balance that will pay the network fees.', noScope: 'No location yet for this account.',
+    signOut: 'Sign out', soloRule: 'One location run by you: your wallet is enough, no other wallet needed. If another person runs a location, or you have several, each location needs its own manager wallet.', pseudonym: 'Pseudonym (3 letters)', createManagerQr: 'Create manager QR', managerQrReady: 'Show this QR only to that manager. It works once.', managerQrFail: 'Couldn’t create the QR. Use 3 letters not already used at this location.', waitingSign: 'waiting for signature', sendNear: 'Send NEAR', sendAmount: 'NEAR', sentNear: 'NEAR sent.', sendNearFail: 'Couldn’t send the NEAR.', askedFor: (n: string) => `Asked for ${n} NEAR`, managerLine: 'Manager', handOver: (name: string) => `Hand the pool to ${name}`, handDone: 'Done. The manager’s wallet now runs this pool.', handFail: 'Couldn’t hand over the pool.', askOwner: 'Ask the owner for NEAR', askAmount: 'NEAR needed', askSentMsg: 'Request sent to the owner.', askFail: 'Couldn’t send the request.', signedAs: 'Signed in as', roleOwner: 'Company owner', roleAdmin: 'Location admin', viaWallet: 'wallet', viaEmail: 'email', walletConnectedNow: 'Connected wallet', walletNotConnected: 'No wallet connected', walletConnectBtn: 'Connect wallet', walletNoPool: 'No pool yet for this location. This is the wallet balance that will pay the network fees.', noScope: 'No location yet for this account.',
     company: 'Company', orgName: 'Company name', saveOrg: 'Save', edit: 'Edit', cancel: 'Cancel', orgFirst: 'Name your company first.',
     locations: 'Locations', noLocations: 'No locations yet.', locName: 'Location name', locAddress: 'Address (optional)', addLoc: 'Add location', open: 'Open',
-    managers: 'Managers', managersLead: 'One manager per location. They never see employee wallets.', managerEmail: 'Manager email', chooseLoc: 'Choose a location', invite: 'Invite', revoke: 'Revoke',
+    managers: 'Managers', managersLead: 'One wallet per location. Create a 3-letter pseudonym and a QR; the manager scans it and signs with their wallet. No email needed. They never see employee wallets.', managerEmail: 'Manager email', chooseLoc: 'Choose a location', invite: 'Invite', revoke: 'Revoke',
     invited: 'Invited. They can sign in with that email.', inviteFail: 'Couldn’t send the invitation.',
     orgFail: 'Use 1 to 80 characters.', locFail: 'Couldn’t add the location. Name your company first and use a unique name.',
     autosaves: 'Changes save automatically.', scheduleLead: 'When this location works. A block that ends before it starts runs past midnight.', blockName: 'Shift name (e.g. Morning)', starts: 'Starts', ends: 'Ends', add: 'Add', remove: 'Remove', saveSchedule: 'Save schedule', scheduleSaved: 'Schedule saved.', scheduleFail: 'Couldn’t save. Check the blocks.',
@@ -94,10 +95,10 @@ const copy = {
     forgot: '¿Olvidaste tu contraseña?', resetSent: 'Si ese email tiene una cuenta, te enviamos un enlace para restablecer la contraseña.', resetFail: 'No se pudo enviar el correo. Probá de nuevo en un minuto.', recoveryTitle: 'Elegí una nueva contraseña', recoveryLead: 'Elegí una contraseña nueva para tu cuenta (8+ caracteres).', newPassword: 'Contraseña nueva', savePassword: 'Guardar contraseña', passwordSaved: 'Contraseña actualizada.',
     sent: 'Revisá tu correo.', sendFail: 'Email o contraseña incorrectos.', accountFail: 'No se pudo crear la cuenta. Usá 8+ caracteres.',
     linkError: (e: string) => `Ese link no funcionó (${e}). Pedí uno nuevo y abrilo enseguida.`,
-    signOut: 'Salir', signedAs: 'Sesión de', roleOwner: 'Dueño de la empresa', roleAdmin: 'Admin del local', viaWallet: 'wallet', viaEmail: 'email', walletConnectedNow: 'Wallet conectada', walletNotConnected: 'Sin wallet conectada', walletConnectBtn: 'Conectar wallet', walletNoPool: 'Este local todavía no tiene pool. Este es el saldo de la wallet que pagará las comisiones de red.', noScope: 'Esta cuenta todavía no tiene locales.',
+    signOut: 'Salir', soloRule: 'Un solo local gestionado por vos: tu wallet alcanza, no hace falta otra. Si otra persona gestiona un local, o tenés varios, cada local necesita su propia wallet de gerente.', pseudonym: 'Seudónimo (3 letras)', createManagerQr: 'Crear QR de gerente', managerQrReady: 'Mostrá este QR solo a ese gerente. Sirve una vez.', managerQrFail: 'No se pudo crear el QR. Usá 3 letras que no estén usadas en este local.', waitingSign: 'esperando la firma', sendNear: 'Enviar NEAR', sendAmount: 'NEAR', sentNear: 'NEAR enviados.', sendNearFail: 'No se pudieron enviar los NEAR.', askedFor: (n: string) => `Pidió ${n} NEAR`, managerLine: 'Gerente', handOver: (name: string) => `Pasarle el pool a ${name}`, handDone: 'Listo. La wallet del gerente ahora administra este pool.', handFail: 'No se pudo pasar el pool.', askOwner: 'Pedirle NEAR al dueño', askAmount: 'NEAR necesarios', askSentMsg: 'Pedido enviado al dueño.', askFail: 'No se pudo enviar el pedido.', signedAs: 'Sesión de', roleOwner: 'Dueño de la empresa', roleAdmin: 'Admin del local', viaWallet: 'wallet', viaEmail: 'email', walletConnectedNow: 'Wallet conectada', walletNotConnected: 'Sin wallet conectada', walletConnectBtn: 'Conectar wallet', walletNoPool: 'Este local todavía no tiene pool. Este es el saldo de la wallet que pagará las comisiones de red.', noScope: 'Esta cuenta todavía no tiene locales.',
     company: 'Empresa', orgName: 'Nombre de la empresa', saveOrg: 'Guardar', edit: 'Editar', cancel: 'Cancelar', orgFirst: 'Primero poné nombre a tu empresa.',
     locations: 'Locales', noLocations: 'Todavía no hay locales.', locName: 'Nombre del local', locAddress: 'Dirección (opcional)', addLoc: 'Agregar local', open: 'Abrir',
-    managers: 'Gerentes', managersLead: 'Un gerente por local. Nunca ve las wallets del equipo.', managerEmail: 'Email del gerente', chooseLoc: 'Elegí un local', invite: 'Invitar', revoke: 'Revocar',
+    managers: 'Gerentes', managersLead: 'Una wallet por local. Creá un seudónimo de 3 letras y un QR; el gerente lo escanea y firma con su wallet. No hace falta email. Nunca ve las wallets del equipo.', managerEmail: 'Email del gerente', chooseLoc: 'Elegí un local', invite: 'Invitar', revoke: 'Revocar',
     invited: 'Invitado. Puede ingresar con ese email.', inviteFail: 'No se pudo enviar la invitación.',
     orgFail: 'Usá de 1 a 80 caracteres.', locFail: 'No se pudo agregar el local. Poné nombre a tu empresa y usá un nombre único.',
     autosaves: 'Los cambios se guardan solos.', scheduleLead: 'Cuándo trabaja este local. Un bloque que termina antes de empezar sigue pasada la medianoche.', blockName: 'Nombre del turno (ej. Mañana)', starts: 'Empieza', ends: 'Termina', add: 'Agregar', remove: 'Quitar', saveSchedule: 'Guardar horario', scheduleSaved: 'Horario guardado.', scheduleFail: 'No se pudo guardar. Revisá los bloques.',
@@ -321,7 +322,7 @@ function Signed({ session }: { session: Session }) {
       <span className="ts-chip">{current?.role === 'organization_admin' ? c.roleOwner : c.roleAdmin}</span>
     </div>
     {note && <div className={`ts-notice${note.bad ? ' bad' : ''}`} role="status">{note.text}</div>}
-    {active === 'dashboard' && (current ? <DashboardTab userId={session.user.id} branchRef={branchRef} poolId={current.branch_pool_id} /> : <p className="ts-muted">{c.noScope}</p>)}
+    {active === 'dashboard' && (current ? <DashboardTab userId={session.user.id} branchRef={branchRef} poolId={current.branch_pool_id} isOwner={current.role === 'organization_admin'} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'company' && owner && <CompanyTab owner={owner} branches={branches} busy={busy} setBusy={setBusy} setNote={setNote} reload={refreshScopes} onOpen={(ref) => { setBranchRef(ref); window.location.hash = '#/console/shift' }} />}
     {active === 'schedule' && (current ? <ScheduleTab branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'shift' && (current ? <ShiftTab branchLabel={current.branch_label} userId={session.user.id} venueRef={venueRef} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
@@ -340,7 +341,10 @@ function CompanyTab({ owner, branches, busy, setBusy, setNote, reload, onOpen }:
   const [locName, setLocName] = useState('')
   const [locAddress, setLocAddress] = useState('')
   const [invites, setInvites] = useState<Invitation[]>([])
-  const [inviteEmail, setInviteEmail] = useState('')
+  const [invitePseudo, setInvitePseudo] = useState('')
+  const [managerQr, setManagerQr] = useState<{ name: string; link: string; small: string; big: string } | null>(null)
+  const [managerZoom, setManagerZoom] = useState(false)
+  const [sendAmounts, setSendAmounts] = useState<Record<string, string>>({})
   const [inviteBranch, setInviteBranch] = useState('')
   const loadInvites = useCallback(async () => {
     const r = await invoke<{ invitations?: Invitation[] }>({ action: 'admin_manager_invitations', venueRef: owner.venue_ref })
@@ -382,21 +386,43 @@ function CompanyTab({ owner, branches, busy, setBusy, setNote, reload, onOpen }:
     <div className="ts-card" style={{ marginTop: 16 }}>
       <h2 className="ts-h3">{c.managers}</h2>
       <p className="ts-lead" style={{ fontSize: 14 }}>{c.managersLead}</p>
+      <div className="ts-notice">{c.soloRule}</div>
       <div className="ts-form-grid">
         <label className="ts-field">{c.locations}<select value={inviteBranch} onChange={(e) => setInviteBranch(e.target.value)}><option value="">{c.chooseLoc}</option>{branches.map((b) => <option key={b.branch_ref} value={b.branch_ref}>{b.branch_label}</option>)}</select></label>
-        <label className="ts-field">{c.managerEmail}<input type="email" value={inviteEmail} maxLength={254} onChange={(e) => setInviteEmail(e.target.value)} /></label>
+        <label className="ts-field">{c.pseudonym}<input value={invitePseudo} maxLength={3} placeholder="ANA" autoComplete="off" onChange={(e) => setInvitePseudo(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))} /></label>
       </div>
-      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !inviteBranch || !inviteEmail.trim()} onClick={() => void run(async () => {
-        const r = await invoke({ action: 'admin_invite_manager', venueRef: owner.venue_ref, branchRef: inviteBranch, email: inviteEmail })
-        if (!r) { setNote({ text: c.inviteFail, bad: true }); return }
-        setNote({ text: c.invited }); setInviteEmail(''); await loadInvites()
-      })}>{c.invite}</button></div>
-      <div className="ts-rows" style={{ marginTop: 12 }}>{invites.filter((i) => i.status !== 'revoked').map((i) => <div className="ts-row" key={i.invitation_id}><span className="ts-avatar pending">@</span><span><strong>{i.manager_email}</strong><small>{i.branch_label} · {c.inviteStates[i.status] ?? i.status}</small></span><button className="ts-btn quiet small" disabled={busy} onClick={() => void run(async () => { await invoke({ action: 'admin_revoke_manager', invitationId: i.invitation_id }); await loadInvites() })}>{c.revoke}</button></div>)}</div>
+      <div className="ts-actions"><button className="ts-btn primary" disabled={busy || !inviteBranch || invitePseudo.length !== 3} onClick={() => void run(async () => {
+        const token = tokenOf()
+        const r = await invoke({ action: 'admin_create_manager_invite', venueRef: owner.venue_ref, branchRef: inviteBranch, pseudonym: invitePseudo, token })
+        if (!r) { setNote({ text: c.managerQrFail, bad: true }); return }
+        const link = `${window.location.origin}${window.location.pathname}#manager=${token}`
+        setManagerQr({ name: invitePseudo, link, small: await toDataURL(link, { width: 240, margin: 1 }), big: await toDataURL(link, { width: 720, margin: 2 }) })
+        setInvitePseudo(''); await loadInvites()
+      })}>{c.createManagerQr}</button></div>
+      {managerQr && <div className="ts-card" style={{ marginTop: 12, textAlign: 'center' }}>
+        <strong>{managerQr.name}</strong>
+        <div><button type="button" className="ts-qr ts-qr-btn" aria-label={c.enlarge} onClick={() => setManagerZoom(true)}><img src={managerQr.small} alt="QR" width={200} height={200} /></button></div>
+        <p className="ts-muted" style={{ fontSize: 13 }}>{c.managerQrReady}</p>
+        <div className="ts-actions" style={{ justifyContent: 'center' }}><button type="button" className="ts-btn quiet small" onClick={() => void navigator.clipboard?.writeText(managerQr.link)}>{c.copyLink}</button></div>
+      </div>}
+      {managerZoom && managerQr && <QrModal title={managerQr.name} sub={c.managers} qr={managerQr.big} hint={c.managerQrReady} onClose={() => setManagerZoom(false)} />}
+      <div className="ts-rows" style={{ marginTop: 12 }}>{invites.filter((i) => i.status !== 'revoked').map((i) => {
+        const want = i.funding_requested ? (Number(BigInt(i.funding_requested) / 10n ** 18n) / 1_000_000).toString() : ''
+        return <div className="ts-row" key={i.invitation_id} style={{ flexWrap: 'wrap' }}><span className="ts-avatar pending">{(i.pseudonym ?? '@').slice(0, 3)}</span><span><strong>{i.pseudonym ?? i.manager_email}</strong><small>{i.branch_label} · {i.status === 'invited' && i.pseudonym ? c.waitingSign : c.inviteStates[i.status] ?? i.status}{i.manager_wallet ? ` · ${i.manager_wallet}` : ''}</small>{want && <small><b>{c.askedFor(want)}</b></small>}</span>
+          <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            {i.manager_wallet && <><input aria-label={c.sendAmount} inputMode="decimal" style={{ width: 80 }} value={sendAmounts[i.invitation_id] ?? want} placeholder="1" onChange={(e) => setSendAmounts((cur) => ({ ...cur, [i.invitation_id]: e.target.value }))} /><button className="ts-btn quiet small" disabled={busy} onClick={() => void run(async () => {
+              const amount = parseNear(sendAmounts[i.invitation_id] ?? want ?? '')
+              if (!amount || !i.manager_wallet) { setNote({ text: c.sendNearFail, bad: true }); return }
+              try { await sendNear({ to: i.manager_wallet, amount }); await invoke({ action: 'admin_clear_funding', invitationId: i.invitation_id }); setNote({ text: c.sentNear }); await loadInvites() } catch { setNote({ text: c.sendNearFail, bad: true }) }
+            })}>{c.sendNear}</button></>}
+            <button className="ts-btn quiet small" disabled={busy} onClick={() => void run(async () => { await invoke({ action: 'admin_revoke_manager', invitationId: i.invitation_id }); await loadInvites() })}>{c.revoke}</button>
+          </span></div>
+      })}</div>
     </div>
   </>
 }
 
-function DashboardTab({ userId, branchRef, poolId }: { userId: string; branchRef: string; poolId: string | null }) {
+function DashboardTab({ userId, branchRef, poolId, isOwner }: { userId: string; branchRef: string; poolId: string | null; isOwner: boolean }) {
   const c = useCopy(copy)
   const [rows, setRows] = useState<Record<string, Checkin[]>>({})
   const [balance, setBalance] = useState<bigint | null>(null)
@@ -427,7 +453,7 @@ function DashboardTab({ userId, branchRef, poolId }: { userId: string; branchRef
       <div className="ts-stat ts-card"><span>{c.dashPresent}</span><strong>{totalPresent}</strong></div>
       <div className="ts-stat ts-card"><span>{c.dashTips}</span><strong>{balance === null ? '—' : usdc(balance)}</strong></div>
     </div>
-    <WalletCard poolId={poolId} />
+    <WalletCard poolId={poolId} canAsk={!isOwner} />
     {active.length === 0 && <div className="ts-notice" style={{ marginTop: 16 }}>{c.dashNone}</div>}
     {active.map((s) => <div className="ts-card" key={s.turnRef} style={{ marginTop: 16 }}>
       <p className="ts-eyebrow">{new Date(s.startsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })} – {new Date(s.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
@@ -630,7 +656,7 @@ function EmployeesTab({ userId, venueRef, branchRef, busy, setBusy, setNote }: T
 
 const usdc = (value: bigint) => `USDC ${(Number(value) / 1_000_000).toFixed(2)}`
 
-function WalletCard({ poolId }: { poolId: string | null }) {
+function WalletCard({ poolId, canAsk = false }: { poolId: string | null; canAsk?: boolean }) {
   const c = useCopy(copy)
   const errText = useErrorText()
   const [info, setInfo] = useState<{ admin: string; near: bigint; reserve: bigint | null } | null>(null)
@@ -647,6 +673,14 @@ function WalletCard({ poolId }: { poolId: string | null }) {
     } catch { /* the card simply stays empty */ }
   }, [poolId])
   useEffect(() => { void load(); const t = window.setInterval(() => void load(), 30_000); return () => window.clearInterval(t) }, [load])
+  const [askAmount, setAskAmount] = useState('1')
+  const ask = async () => {
+    const amount = parseNear(askAmount)
+    if (!amount) return
+    setBusy(true); setMsg(null)
+    const r = await invoke({ action: 'manager_request_funds', amount: amount.toString() })
+    setMsg(r ? { text: c.askSentMsg } : { text: c.askFail, bad: true }); setBusy(false)
+  }
   const low = info !== null && info.near < 100_000_000_000_000_000_000_000n
   const recharge = async () => {
     setBusy(true); setMsg(null)
@@ -666,6 +700,10 @@ function WalletCard({ poolId }: { poolId: string | null }) {
     {info && <p className="ts-muted" style={{ marginTop: 10, fontSize: 12 }}>{c.walletAccount}: <b className="ts-mono">{info.admin}</b></p>}
     {low && <div className="ts-notice bad" role="alert">{c.walletLow}</div>}
     {msg && <div className={`ts-notice${msg.bad ? ' bad' : ''}`} role="status">{msg.text}</div>}
+    {canAsk && <div className="ts-form-grid" style={{ marginTop: 12 }}>
+      <label className="ts-field">{c.askAmount}<input inputMode="decimal" value={askAmount} onChange={(e) => setAskAmount(e.target.value)} /></label>
+      <div className="ts-actions" style={{ alignSelf: 'end' }}><button type="button" className="ts-btn primary small" disabled={busy || !parseNear(askAmount)} onClick={() => void ask()}>{c.askOwner}</button></div>
+    </div>}
     <div className="ts-actions">{poolId ? <button type="button" className="ts-btn quiet small" disabled={busy || !info} onClick={() => void recharge()}>{busy ? c.working : c.recharge}</button> : <button type="button" className="ts-btn quiet small" disabled={busy} onClick={() => void recharge().then(load)}>{busy ? c.working : c.walletConnectBtn}</button>}</div>
   </div>
 }
@@ -680,6 +718,8 @@ function TipsTab({ branchLabel, userId, branchRef, poolId, isOwner, reload, setN
   const [busy, setBusy] = useState(false)
   const [step, setStep] = useState('')
   const [distTx, setDistTx] = useState<string | null>(poolId ? savedDistributionTx(poolId) : null)
+  const [manager, setManager] = useState<BranchManager | null>(null)
+  useEffect(() => { void invoke<{ manager?: BranchManager | null }>({ action: 'admin_branch_manager', branchRef }).then((r) => setManager(r?.manager ?? null)) }, [branchRef, poolId])
   const load = useCallback(async () => { if (poolId) await readPool(poolId).then(setPool).catch(() => setPool(null)) }, [poolId])
   useEffect(() => { void load(); const t = window.setInterval(() => void load(), 10_000); return () => window.clearInterval(t) }, [load])
   const fail = (e: unknown) => { const m = e instanceof Error ? e.message : String(e); setNote({ text: m === 'NOT_ADMIN' ? c.notAdmin : m === 'POOL_MISSING' ? c.waitingPool : errText(e, c.genericFail), bad: true }) }
@@ -687,11 +727,18 @@ function TipsTab({ branchLabel, userId, branchRef, poolId, isOwner, reload, setN
     setBusy(true); setNote(null)
     try {
       const id = `tsp-${branchRef.replaceAll('-', '').slice(0, 12)}-${Array.from(crypto.getRandomValues(new Uint8Array(4)), (x) => x.toString(16).padStart(2, '0')).join('')}`
-      await createBranchPool({ poolId: id })
+      await createBranchPool({ poolId: id, handTo: manager?.manager_wallet })
       const saved = await invoke({ action: 'admin_set_branch_pool', branchRef, poolId: id })
       if (!saved) throw new Error(c.poolSaveFail)
       await reload(); setNote({ text: c.poolCreated })
     } catch (e) { fail(e) } finally { setBusy(false) }
+  }
+  const handOver = async () => {
+    if (!poolId || !manager) return
+    setBusy(true); setNote(null)
+    try { await handPoolTo({ poolId, newAdmin: manager.manager_wallet }); await load(); setNote({ text: c.handDone }) }
+    catch (e) { setNote({ text: (e instanceof Error && e.message === 'NOT_ADMIN') ? c.notAdmin : errText(e, c.handFail), bad: true }) }
+    finally { setBusy(false) }
   }
   const revokePool = async () => {
     const held = pool ? BigInt(pool.balance) : 0n
@@ -764,6 +811,8 @@ function TipsTab({ branchLabel, userId, branchRef, poolId, isOwner, reload, setN
     <div className="ts-card" style={{ marginTop: 16 }}>
       <h3 className="ts-h3">{c.noPoolTitle}</h3>
       <p className="ts-muted" style={{ fontSize: 13 }}>{c.noPoolText}</p>
+      {isOwner && <div className="ts-notice">{c.soloRule}</div>}
+      {manager && <p className="ts-muted" style={{ fontSize: 13 }}>{c.managerLine}: <b>{manager.pseudonym}</b> · <span className="ts-mono">{manager.manager_wallet}</span></p>}
       {isOwner
         ? <div className="ts-actions"><button type="button" className="ts-btn primary" disabled={busy} onClick={() => void createPool()}>{busy ? c.creatingPool : c.createPool}</button></div>
         : <div className="ts-notice">{c.ownerCreatesPool}</div>}
@@ -776,7 +825,9 @@ function TipsTab({ branchLabel, userId, branchRef, poolId, isOwner, reload, setN
       <div className="ts-stat ts-card"><span>{c.poolBalance}</span><strong>{pool ? usdc(BigInt(pool.balance)) : '—'}</strong></div>
     </div>
     {pool === null && <div className="ts-notice bad">{c.waitingPool}</div>}
-    <WalletCard poolId={poolId} />
+    {manager && <p className="ts-muted" style={{ marginTop: 12, fontSize: 13 }}>{c.managerLine}: <b>{manager.pseudonym}</b> · <span className="ts-mono">{manager.manager_wallet}</span></p>}
+    {isOwner && manager && pool?.admin_id && pool.admin_id !== manager.manager_wallet && <div className="ts-actions"><button type="button" className="ts-btn primary small" disabled={busy} onClick={() => void handOver()}>{c.handOver(manager.pseudonym)}</button></div>}
+    <WalletCard poolId={poolId} canAsk={!isOwner} />
     {isOwner && <div className="ts-actions" style={{ marginTop: 8 }}><button type="button" className="ts-btn danger small" disabled={busy} onClick={() => void revokePool()}>{c.revokePool}</button></div>}
     <div className="ts-card" style={{ marginTop: 16 }}>
       <label className="ts-field">{c.tipAmount}<input inputMode="decimal" value={amount} placeholder={c.anyAmount} onChange={(e) => setAmount(e.target.value)} /></label>

@@ -171,7 +171,7 @@ const POOL_CREDIT = NEAR / 10n
  * Creates the pool of a location with the connected wallet as its admin (it pays the storage) and opens
  * collection in the same transaction. Done once per location.
  */
-export async function createBranchPool(params: { poolId: string }) {
+export async function createBranchPool(params: { poolId: string; handTo?: string | null }) {
   const { wallet, accountId } = await connectTestnetWallet({})
   const { actionCreators } = await import('@near-js/transactions')
   const outcome = await wallet.signAndSendTransaction({
@@ -180,10 +180,39 @@ export async function createBranchPool(params: { poolId: string }) {
     actions: [
       actionCreators.functionCall('create_pool', { pool_id: params.poolId, admin_id: accountId, roster: [{ worker_ref: 'seed', near_wallet: accountId, share_bps: 10_000 }], storage_credit: POOL_CREDIT.toString() }, 100_000_000_000_000n, POOL_DEPOSIT),
       actionCreators.functionCall('start_collection', { pool_id: params.poolId }, 30_000_000_000_000n, 0n),
+      // When the location already has a manager, their wallet takes over the pool in the same transaction.
+      ...(params.handTo && params.handTo !== accountId ? [actionCreators.functionCall('set_pool_admin', { pool_id: params.poolId, new_admin_id: params.handTo }, 30_000_000_000_000n, 0n)] : []),
     ],
   })
   await waitForPool(params.poolId, (p) => p.state === 'collecting')
   return { accountId, hash: transactionHash(outcome) }
+}
+
+/** Gives the pool to another wallet (current administrator only). */
+export async function handPoolTo(params: { poolId: string; newAdmin: string }) {
+  const { wallet, accountId } = await connectTestnetWallet({})
+  const pool = await readPool(params.poolId)
+  if (pool?.admin_id && pool.admin_id !== accountId) throw new Error('NOT_ADMIN')
+  const { actionCreators } = await import('@near-js/transactions')
+  const outcome = await wallet.signAndSendTransaction({ signerId: accountId, receiverId: VAULT_ACCOUNT_ID, actions: [actionCreators.functionCall('set_pool_admin', { pool_id: params.poolId, new_admin_id: params.newAdmin }, 30_000_000_000_000n, 0n)] })
+  await waitForPool(params.poolId, (p) => p.admin_id === params.newAdmin)
+  return transactionHash(outcome)
+}
+
+/** "1.5" -> yoctoNEAR; null when it is not a positive amount with at most 6 decimals. */
+export function parseNear(text: string): bigint | null {
+  const m = /^(\d{1,3})(?:[.,](\d{1,6}))?$/.exec(text.trim())
+  if (!m) return null
+  const value = BigInt(m[1]) * 10n ** 24n + BigInt((m[2] ?? '').padEnd(6, '0')) * 10n ** 18n
+  return value > 0n ? value : null
+}
+
+/** Sends NEAR from the connected wallet (the owner funding a manager's network fees). */
+export async function sendNear(params: { to: string; amount: bigint }) {
+  const { wallet, accountId } = await connectTestnetWallet({})
+  const { actionCreators } = await import('@near-js/transactions')
+  const outcome = await wallet.signAndSendTransaction({ signerId: accountId, receiverId: params.to, actions: [actionCreators.transfer(params.amount)] })
+  return transactionHash(outcome)
 }
 
 /** Adds NEAR to the pool's storage reserve (admin only). */

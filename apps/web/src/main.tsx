@@ -13,6 +13,7 @@ import { MyShift } from './ui/pages/MyShift'
 import { Tip } from './ui/pages/Tip'
 import { Landing } from './ui/pages/Landing'
 import { Demo } from './ui/pages/Demo'
+import { ManagerJoin } from './ui/pages/ManagerJoin'
 import './styles.css'
 import './theme.css'
 
@@ -24,6 +25,7 @@ function Root() {
   const route = useRoute()
   switch (route.page) {
     case 'register': return <EmployeeRegister token={route.token} />
+    case 'manager': return <ManagerJoin token={route.token} />
     case 'checkin': return <CheckIn token={route.token} />
     case 'tip': return <Tip paymentRef={route.paymentRef} amount={route.amount} poolId={route.poolId} />
     case 'claim': return <Legacy><RecipientClaim /></Legacy>
