@@ -8,12 +8,13 @@ Built for the NEAR Hackathon. **Testnet only**: no real money moves.
 
 ## How it works
 
-1. **Set up.** A business registers its company and locations and invites a manager per location.
-2. **Join.** Each employee opens a one-time link or QR, enters their initials and connects a NEAR wallet. The manager sees initials only, never wallets.
-3. **Check in.** At the start of a shift the employee scans their group's QR and signs a message (NEP-413). Signing moves no funds.
-4. **Tip.** Customers open a public link or QR, connect a wallet and pay any amount they like in USDC. Each link works for one payment and goes into the shift's pool on the vault contract. The console has a Dashboard with active shifts, groups, people present and the live tip pool.
-5. **Dispute.** Anyone who was present can object to the split. The people present vote (more than half must agree). If it is accepted, the manager proposes a corrected split and the team votes on it. The whole history is part of the shift report and its CSV.
-6. **Get paid.** The shift closes, the manager's wallet sets the on-chain roster to the people who actually checked in (wallets are decrypted server-side, never typed by hand), the split is frozen on-chain and each person is paid. Groups have a percentage of the tips; people inside a group split equally; a group with nobody present gets nothing.
+1. **Set up.** The company owner (whoever names the business) registers the company and its locations. Each location has its own tip pool, created only by the owner and revocable and recreatable by the owner.
+2. **Managers join by QR.** The owner picks a 3-letter pseudonym and shows a one-time QR; the manager scans it and signs with their NEAR wallet. That wallet becomes the location's administrator and pays the small network fees. No email or password. A manager can ask the owner for more NEAR from the console and the owner sends it from there. A solo owner running one location needs no second wallet.
+3. **Employees join.** Each employee opens a one-time link or QR, enters initials and connects a NEAR wallet. Managers see initials only, never wallets.
+4. **Check in.** At the start of a shift the employee scans their group's QR and signs a message (NEP-413). Signing moves no funds.
+5. **Tip.** Customers open a public link or QR and pay any amount in USDC into the location's pool. Each link works for one payment.
+6. **Dispute.** Until the payout, anyone present can object to the split; the people present vote (more than half must agree); if accepted, the manager proposes a corrected split and the team votes. After the payout the shift is closed and nothing can be disputed.
+7. **Close and get paid.** Closing saves the pool balance on the shift (it feeds the receipt), takes the roster from the real check-ins (wallets decrypted server-side, never typed), freezes the split on-chain and pays each person. Groups have a percentage of the tips; people inside a group split equally. The same pool is reused for the next shift. The pool's creator (the owner) keeps control even after handing it to a manager, so funds are never trapped.
 
 Privacy by design: no names, emails, phones or seed phrases are collected from employees or customers. Reports are removed after 30 days; the final distribution stays on-chain.
 
@@ -23,7 +24,7 @@ Requirements: Node 22.6+ (the tests use `--experimental-strip-types`) and pnpm 9
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm check        # typecheck, 40 tests, production build
+pnpm check        # typecheck, 46 tests, production build
 pnpm dev          # http://127.0.0.1:5173
 ```
 
@@ -42,14 +43,14 @@ Server secrets (never in the repo): `TIPSHIFT_ALLOWED_ORIGINS`, `TIPSHIFT_PUBLIC
 
 ## Try the demo
 
-1. Open https://tipshift.pages.dev with a NEAR testnet wallet (Meteor, MyNearWallet, HERE or Nightly).
-2. **Manager console:** `#/console`. Create an account with email and password, name the company, add a location.
-3. **Join link:** Console, Team tab. Open the link, enter initials, connect the wallet, then "Set up USDC" (NEP-145 storage deposit, needed to receive a NEP-141 token).
-4. **Shift:** Console, Shifts tab. Create a shift with groups and scan each group's QR to check in.
-5. **Customer QR:** Console, Customer QR tab. Scan it or open the link, pay with a wallet that holds test USDC (`usdc.fakes.testnet`).
-6. **Dispute:** `#/me`, "Dispute this split" on a shift you checked in to. Another present employee votes in `#/me`; once accepted, the manager proposes a corrected split in Console, Reports, and the team votes on it.
-7. **Close and pay:** Console, Customer QR tab, "Close shift and pay". This demo uses the fixed demonstration pool (one-shot).
-8. **My shifts:** `#/me`. Sign with your wallet to see what you earned and download a CSV (it includes the dispute history).
+1. Open https://tipshift.pages.dev. Sign in with **Continue with Meteor** (first click connects, second signs) or **Continue with email**.
+2. **Company:** name the company and add a location. **Tips tab:** "Create pool with my wallet" (needs about 0.4 NEAR on that wallet for the pool deposit and fees).
+3. **Optional manager:** Company tab, Managers: choose the location, type 3 letters, create the QR. The manager scans it and signs; the pool can then be handed over to their wallet.
+4. **Employees:** Team tab, show the join link or QR. Each employee enters initials, connects a wallet and sets up USDC storage (needed to receive a NEP-141 token).
+5. **Shift:** Shifts tab, create groups and show each group's QR for check-in.
+6. **Customer QR:** Tips tab. Pay with a wallet that holds test USDC (`usdc.fakes.testnet`).
+7. **Dispute:** `#/me`, "Dispute this split". Another present employee votes; once accepted the manager proposes a correction and the team votes.
+8. **Close and pay:** Tips tab, "Close shift and pay". Then `#/me` shows each employee's receipt and CSV.
 
 ## Architecture
 
@@ -64,17 +65,19 @@ Payments are `ft_transfer_call` into per-shift pools. The contract rejects a dif
 
 ## What is verified
 
-- **Contract, on testnet:** a full shift of 10 USDC split 4.0 / 3.5 / 2.5, plus recovery from a partial payout (one wallet not registered for USDC, then retry pays only the missing one). Transactions and accounts are in [docs/E2E_TESTNET.md](docs/E2E_TESTNET.md) and [docs/TESTNET_PROOF.md](docs/TESTNET_PROOF.md).
-- **Backend, against production:** 24 checks covering registration, check-in (including full group and wrong group), initials-only views, reports, hiding, replay protection and deletion.
-- **Unit tests:** `pnpm test:core` (40 tests: vault, roles, split, claims, manifest).
+- **Whole flow against production and testnet, with real signatures and transactions** (scripts are not in the repo): company, location, manager QR join, pool created by the owner wallet and handed to the manager, funding request and NEAR transfer, employee registration, check-in, customer payment, close, payout (exact splits, 4/4 delivered), receipt with closing balance and linked transaction, disputes refused after close, second shift on the same pool closed by the owner.
+- **Contract:** 33 tests (`cargo test` in `contracts/tipshift-vault`), upgraded in place on testnet.
+- **Web:** `pnpm check` (typecheck, 46 tests, build). Contrast audit over every screen in ES/EN and day/night: 0 findings.
+- Not automated: real browser wallet popups (Meteor) and password-recovery email delivery; these were checked by hand or not at all.
 
 ## Known limits
 
 - Testnet and test USDC only.
-- The console's close-and-pay button uses a fixed demonstration pool with a fixed team. Per-shift pools created by a server key are not built yet.
-- Shifts are not closed automatically yet.
-- Dispute votes and corrections live in the shift report only, not on-chain. The console's demo payout still pays the fixed demonstration pool, so an approved correction changes the report and CSV but not that demo transaction.
-- Browser wallet popups are tested by hand on the hosted demo, not by automated tests.
+- Employees must register USDC storage on their wallet before they can be paid; a payout to an unregistered wallet fails and can be retried for the missing ones only.
+- Revoking a pool or a manager unlinks it in the app; it does not move on-chain funds. The pool creator (owner) can still close and pay it.
+- A wallet that signed in to the console on its own becomes the owner of its own empty company, so a manager must enter for the first time through the owner's QR.
+- Shifts are not closed automatically yet. Dispute votes have no deadline.
+- Wallets other than Meteor are offered by the selector but only Meteor was tested end to end.
 
 ## Roadmap and business model
 
