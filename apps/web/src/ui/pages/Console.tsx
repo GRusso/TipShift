@@ -17,8 +17,8 @@ type Employee = { employee_id: string; initials: string; created_at: string }
 type Group = { groupRef: string; label: string; shareBps: number; capacity: number }
 type Checkin = { group_ref: string; capacity: number; employee_id: string | null; initials: string | null; signed: boolean | null }
 type SavedShift = { userId: string; turnRef: string; branchRef: string; startsAt: string; endsAt: string; groups: { groupRef: string; label: string; url: string; shareBps?: number }[] }
-type Tab = 'company' | 'schedule' | 'shift' | 'employees' | 'tips' | 'report'
-const TABS: Tab[] = ['company', 'schedule', 'shift', 'employees', 'tips', 'report']
+type Tab = 'dashboard' | 'company' | 'schedule' | 'shift' | 'employees' | 'tips' | 'report'
+const TABS: Tab[] = ['dashboard', 'company', 'schedule', 'shift', 'employees', 'tips', 'report']
 
 const SHIFTS_KEY = 'tipshift-group-shifts'
 const readShifts = (): SavedShift[] => {
@@ -43,7 +43,7 @@ const equalize = (groups: Group[]): Group[] => groups.map((g, i) => ({ ...g, sha
 const copy = {
   en: {
     ribbon: 'Manager · Testnet',
-    nav: { company: 'Company', schedule: 'Schedule', shift: 'Shifts', employees: 'Team', tips: 'Customer QR', report: 'Reports' },
+    nav: { dashboard: 'Dashboard', company: 'Company', schedule: 'Schedule', shift: 'Shifts', employees: 'Team', tips: 'Customer QR', report: 'Reports' },
     days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     configTitle: 'Configuration required', configText: 'The public Supabase URL and key are missing.',
     signingIn: 'One moment…',
@@ -60,6 +60,7 @@ const copy = {
     newShift: 'New shift', pickBlock: 'Shift', chooseBlock: 'Choose a shift', date: 'Date', needSchedule: 'Save your schedule first.',
     groupsTitle: 'Groups', groupsLead: 'One QR per group. People in a group split equally.', groupName: 'Group name', share: '% of tips', capacity: 'People', addGroup: 'Add group', createShift: 'Create shift', created: 'Shift created. Show each QR to its group.',
     shareWarn: 'Percentages must add up to 100%.', createFail: 'Couldn’t create the shift. Check the dates and groups.',
+    dashActive: 'Active shifts', dashGroups: 'Groups', dashPresent: 'People present', dashTips: 'Tips collected', dashNone: 'No active shifts right now. Create one in Shifts.', dashOf: 'of', dashPool: 'Tip pool (demo pool)',
     activeShifts: 'Active shifts', noShifts: 'No active shifts.', refresh: 'Refresh', checkedIn: 'checked in', reserved: 'reserved', reserve: 'Reserve a place', pickEmployee: 'Pick a person', regTitle: 'Join link', regSub: 'ONCE PER PERSON', regHint: 'Your team scans this once to join.', openLink: 'Open', copyLink: 'Copy link', copied: 'Copied. Send it on WhatsApp.', enlarge: 'Enlarge QR', close: 'Close', shiftOf: 'SHIFT', scanHint: 'Scan and sign to check in.', placesLeft: 'places',
     updated: 'Updated.', regLead: 'Everyone joins once with their own wallet. You see only initials.', issue: 'Create join link', replace: 'Replace join link', issued: 'New link created. The old one no longer works.', issueFail: 'Couldn’t create the link.',
     registered: 'Team', nobody: 'Nobody has joined yet.', registeredOn: 'Joined',
@@ -70,7 +71,7 @@ const copy = {
   },
   es: {
     ribbon: 'Gerente · Testnet',
-    nav: { company: 'Empresa', schedule: 'Horario', shift: 'Turnos', employees: 'Equipo', tips: 'QR del cliente', report: 'Reportes' },
+    nav: { dashboard: 'Panel', company: 'Empresa', schedule: 'Horario', shift: 'Turnos', employees: 'Equipo', tips: 'QR del cliente', report: 'Reportes' },
     days: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
     configTitle: 'Falta configuración', configText: 'Faltan la URL pública de Supabase y la clave.',
     signingIn: 'Un momento…',
@@ -87,6 +88,7 @@ const copy = {
     newShift: 'Nuevo turno', pickBlock: 'Turno', chooseBlock: 'Elegí un turno', date: 'Fecha', needSchedule: 'Primero guardá tu horario.',
     groupsTitle: 'Grupos', groupsLead: 'Un QR por grupo. Dentro de un grupo se reparte en partes iguales.', groupName: 'Nombre del grupo', share: '% de propinas', capacity: 'Personas', addGroup: 'Agregar grupo', createShift: 'Crear turno', created: 'Turno creado. Mostrá cada QR a su grupo.',
     shareWarn: 'Los porcentajes deben sumar 100%.', createFail: 'No se pudo crear el turno. Revisá las fechas y los grupos.',
+    dashActive: 'Turnos activos', dashGroups: 'Grupos', dashPresent: 'Personas presentes', dashTips: 'Propinas juntadas', dashNone: 'No hay turnos activos ahora. Creá uno en Turnos.', dashOf: 'de', dashPool: 'Pozo de propinas (pool demo)',
     activeShifts: 'Turnos activos', noShifts: 'No hay turnos activos.', refresh: 'Actualizar', checkedIn: 'presentes', reserved: 'reservado', reserve: 'Reservar un lugar', pickEmployee: 'Elegí una persona', regTitle: 'Link de alta', regSub: 'UNA VEZ POR PERSONA', regHint: 'Tu equipo lo escanea una vez para sumarse.', openLink: 'Abrir', copyLink: 'Copiar link', copied: 'Copiado. Mandalo por WhatsApp.', enlarge: 'Agrandar QR', close: 'Cerrar', shiftOf: 'TURNO', scanHint: 'Escaneá y firmá para entrar.', placesLeft: 'lugares',
     updated: 'Actualizado.', regLead: 'Cada persona se suma una vez con su propia wallet. Vos ves solo las iniciales.', issue: 'Crear link de alta', replace: 'Reemplazar link de alta', issued: 'Link nuevo creado. El anterior ya no funciona.', issueFail: 'No se pudo crear el link.',
     registered: 'Equipo', nobody: 'Todavía no se sumó nadie.', registeredOn: 'Se sumó',
@@ -166,7 +168,7 @@ function Signed({ session }: { session: Session }) {
   const [scopes, setScopes] = useState<Scope[]>([])
   const [branchRef, setBranchRef] = useState('')
   const explicitTab = useRef(TABS.some((t) => window.location.hash === `#/console/${t}`))
-  const [tab, setTab] = useState<Tab>(() => TABS.find((t) => window.location.hash === `#/console/${t}`) ?? 'shift')
+  const [tab, setTab] = useState<Tab>(() => TABS.find((t) => window.location.hash === `#/console/${t}`) ?? 'dashboard')
   const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -189,9 +191,14 @@ function Signed({ session }: { session: Session }) {
   const current = branches.find((b) => b.branch_ref === branchRef)
   const venueRef = current?.venue_ref ?? owner?.venue_ref ?? ''
   // A new owner lands on Company (name, locations, managers) instead of Shifts.
-  useEffect(() => { if (owner && !explicitTab.current) { explicitTab.current = true; setTab('company') } }, [owner])
+  useEffect(() => {
+    if (explicitTab.current || scopes.length === 0) return
+    explicitTab.current = true
+    setTab(owner && (!owner.organization_name || branches.length === 0) ? 'company' : 'dashboard')
+  }, [scopes, owner, branches.length])
 
   const nav: NavItem[] = [
+    { id: 'dashboard', label: c.nav.dashboard, icon: '◈', href: '#/console/dashboard' },
     ...(owner ? [{ id: 'company', label: c.nav.company, icon: '▣', href: '#/console/company' }] : []),
     { id: 'schedule', label: c.nav.schedule, icon: '◷', href: '#/console/schedule' },
     { id: 'shift', label: c.nav.shift, icon: '◉', href: '#/console/shift' },
@@ -211,6 +218,7 @@ function Signed({ session }: { session: Session }) {
     nav={nav} active={active} title={titles[active]} eyebrow={current?.branch_label?.toUpperCase()}
     actions={<button type="button" className="ts-chip" onClick={() => void client.auth.signOut()}>{c.signOut}</button>}>
     {note && <div className={`ts-notice${note.bad ? ' bad' : ''}`} role="status">{note.text}</div>}
+    {active === 'dashboard' && (current ? <DashboardTab userId={session.user.id} branchRef={branchRef} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'company' && owner && <CompanyTab owner={owner} branches={branches} busy={busy} setBusy={setBusy} setNote={setNote} reload={refreshScopes} onOpen={(ref) => { setBranchRef(ref); window.location.hash = '#/console/shift' }} />}
     {active === 'schedule' && (current ? <ScheduleTab branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
     {active === 'shift' && (current ? <ShiftTab branchLabel={current.branch_label} userId={session.user.id} venueRef={venueRef} branchRef={branchRef} busy={busy} setBusy={setBusy} setNote={setNote} /> : <p className="ts-muted">{c.noScope}</p>)}
@@ -281,6 +289,49 @@ function CompanyTab({ owner, branches, busy, setBusy, setNote, reload, onOpen }:
       })}>{c.invite}</button></div>
       <div className="ts-rows" style={{ marginTop: 12 }}>{invites.filter((i) => i.status !== 'revoked').map((i) => <div className="ts-row" key={i.invitation_id}><span className="ts-avatar pending">@</span><span><strong>{i.manager_email}</strong><small>{i.branch_label} · {i.status}</small></span><button className="ts-btn quiet small" disabled={busy} onClick={() => void run(async () => { await invoke({ action: 'admin_revoke_manager', invitationId: i.invitation_id }); await loadInvites() })}>{c.revoke}</button></div>)}</div>
     </div>
+  </>
+}
+
+function DashboardTab({ userId, branchRef }: { userId: string; branchRef: string }) {
+  const c = useCopy(copy)
+  const [rows, setRows] = useState<Record<string, Checkin[]>>({})
+  const [balance, setBalance] = useState<bigint | null>(null)
+  const active = readShifts().filter((s) => s.userId === userId && s.branchRef === branchRef && Date.parse(s.startsAt) <= Date.now() + 15 * 60_000 && Date.parse(s.endsAt) > Date.now())
+  const key = active.map((s) => s.turnRef).join(',')
+  useEffect(() => {
+    let live = true
+    const read = async () => {
+      const next: Record<string, Checkin[]> = {}
+      for (const s of active) {
+        const r = await invoke<{ checkins?: Checkin[] }>({ action: 'admin_group_checkins', turnRef: s.turnRef })
+        if (r?.checkins) next[s.turnRef] = r.checkins
+      }
+      if (live) setRows(next)
+      readDemoPool().then((p) => { if (live) setBalance(p ? BigInt(p.balance) : 0n) }).catch(() => undefined)
+    }
+    void read(); const t = window.setInterval(() => void read(), 10_000)
+    return () => { live = false; window.clearInterval(t) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+  const present = (turnRef: string, groupRef?: string) => (rows[turnRef] ?? []).filter((r) => r.employee_id && (!groupRef || r.group_ref === groupRef)).length
+  const totalPresent = active.reduce((n, s) => n + present(s.turnRef), 0)
+  const totalGroups = active.reduce((n, s) => n + s.groups.length, 0)
+  return <>
+    <div className="ts-grid2">
+      <div className="ts-stat ts-card"><span>{c.dashActive}</span><strong>{active.length}</strong></div>
+      <div className="ts-stat ts-card"><span>{c.dashGroups}</span><strong>{totalGroups}</strong></div>
+      <div className="ts-stat ts-card"><span>{c.dashPresent}</span><strong>{totalPresent}</strong></div>
+      <div className="ts-stat ts-card"><span>{c.dashTips}</span><strong>{balance === null ? '—' : usdc(balance)}</strong></div>
+    </div>
+    {active.length === 0 && <div className="ts-notice" style={{ marginTop: 16 }}>{c.dashNone}</div>}
+    {active.map((s) => <div className="ts-card" key={s.turnRef} style={{ marginTop: 16 }}>
+      <p className="ts-eyebrow">{new Date(s.startsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })} – {new Date(s.endsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+      <div className="ts-rows">{s.groups.map((g) => {
+        const cap = (rows[s.turnRef] ?? []).filter((r) => r.group_ref === g.groupRef).length
+        return <div className="ts-row" key={g.groupRef}><span className="ts-avatar">{(g.label || c.group).slice(0, 2).toUpperCase()}</span><span><strong>{g.label || c.group}</strong><small>{present(s.turnRef, g.groupRef)} {c.dashOf} {cap} {c.checkedIn}{g.shareBps ? ` · ${(g.shareBps / 100).toFixed(0)}%` : ''}</small></span></div>
+      })}</div>
+    </div>)}
+    <p className="ts-muted" style={{ fontSize: 11, marginTop: 12 }}>{c.dashPool}</p>
   </>
 }
 
